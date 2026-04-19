@@ -1,0 +1,190 @@
+:root {
+  font-family: "Segoe UI", system-ui, sans-serif;
+  line-height: 1.45;
+  color: #e8eaed;
+  background: #0f1115;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+a {
+  color: #7ab8ff;
+}
+
+.app {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 1.25rem 1rem 2rem;
+}
+
+header h1 {
+  margin: 0 0 0.25rem;
+  font-size: 1.35rem;
+  font-weight: 650;
+}
+
+header p {
+  margin: 0;
+  color: #9aa3ad;
+  font-size: 0.95rem;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: flex-end;
+  margin: 1.25rem 0;
+  padding: 1rem;
+  background: #161a22;
+  border: 1px solid #252b36;
+  border-radius: 10px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.field label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #8b95a1;
+}
+
+select,
+input {
+  background: #0f1115;
+  color: #e8eaed;
+  border: 1px solid #2c3544;
+  border-radius: 8px;
+  padding: 0.45rem 0.55rem;
+  min-width: 10rem;
+}
+
+button.primary {
+  background: #2563eb;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 0.55rem 1rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+button.primary:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.status {
+  font-size: 0.9rem;
+  color: #9aa3ad;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+@media (max-width: 900px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.panel {
+  background: #161a22;
+  border: 1px solid #252b36;
+  border-radius: 10px;
+  padding: 0.9rem 1rem;
+  min-height: 120px;
+}
+
+.panel h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+  font-weight: 650;
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 0.65rem;
+  font-size: 0.9rem;
+}
+
+.pill {
+  display: inline-block;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  background: #1e2430;
+  border: 1px solid #2c3544;
+}
+
+.pill.fast {
+  border-color: #2d6a4f;
+  background: #13261c;
+}
+
+.pill.slow {
+  border-color: #7f1d1d;
+  background: #261313;
+}
+
+pre.sql {
+  margin: 0 0 0.75rem;
+  padding: 0.65rem;
+  background: #0f1115;
+  border-radius: 8px;
+  overflow: auto;
+  font-size: 0.78rem;
+  border: 1px solid #252b36;
+  max-height: 200px;
+}
+
+table.sample {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+}
+
+table.sample th,
+table.sample td {
+  border-bottom: 1px solid #252b36;
+  padding: 0.35rem 0.4rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+details.explain {
+  margin-top: 0.5rem;
+}
+
+details.explain summary {
+  cursor: pointer;
+  color: #9aa3ad;
+  font-size: 0.85rem;
+}
+
+details.explain pre {
+  margin: 0.5rem 0 0;
+  padding: 0.65rem;
+  background: #0f1115;
+  border-radius: 8px;
+  overflow: auto;
+  font-size: 0.72rem;
+  max-height: 280px;
+  border: 1px solid #252b36;
+}

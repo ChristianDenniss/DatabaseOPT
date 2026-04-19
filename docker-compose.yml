@@ -1,0 +1,27 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: databaseopt-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${PG_USER:-bench}
+      POSTGRES_PASSWORD: ${PG_PASSWORD:-benchdev}
+      POSTGRES_DB: ${PG_DATABASE:-socialbench}
+    ports:
+      - "${PG_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/docker/postgres-init:/docker-entrypoint-initdb.d:ro
+
+  redis:
+    image: redis:7-alpine
+    container_name: databaseopt-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+
+volumes:
+  postgres_data:
+  redis_data:
