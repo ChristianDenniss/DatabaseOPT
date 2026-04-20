@@ -703,28 +703,101 @@ export function BenchmarkWorkbench() {
 
       {catalog && (
         <>
-          <div className="workbench-task">
-            <label className="field-label" htmlFor="wb-entity">
-              1. {workbenchUi.copy.stepEntity}
-            </label>
-            <select
-              id="wb-entity"
-              className="wb-select"
-              value={entityId}
-              onChange={(e) => {
-                const id = e.target.value;
-                setEntityId(id);
-                const next = catalog?.entities.find((x) => x.id === id);
-                if (next) resetWorkbenchForEntity(next);
-              }}
-            >
-              {catalog.entities.map((e) => (
-                <option key={e.id} value={e.id}>
-                  {e.label}
-                </option>
-              ))}
-            </select>
-            {entity && <p className="task-desc">{entity.description}</p>}
+          <div className="workbench-params workbench-dataset-sort-row">
+            <div className="wb-dataset-col">
+              <h3 id="wb-dataset-step">{`1. ${workbenchUi.copy.stepEntity}`}</h3>
+              <select
+                id="wb-entity"
+                className="wb-select wb-dataset-select wb-after-heading"
+                aria-labelledby="wb-dataset-step"
+                value={entityId}
+                onChange={(e) => {
+                  const id = e.target.value;
+                  setEntityId(id);
+                  const next = catalog?.entities.find((x) => x.id === id);
+                  if (next) resetWorkbenchForEntity(next);
+                }}
+              >
+                {catalog.entities.map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.label}
+                  </option>
+                ))}
+              </select>
+              {entity && <p className="task-desc">{entity.description}</p>}
+            </div>
+            <div className="wb-limitsort-col">
+              {entity ? (
+                <>
+                  <h3>2. {workbenchUi.copy.limitSortHeading}</h3>
+                  <div className="wb-limitsort-fields wb-after-heading">
+                    <div className="wb-limitsort-stacked-field">
+                      <input
+                        id="wb-limit"
+                        className="wb-input"
+                        type="text"
+                        inputMode="numeric"
+                        placeholder={workbenchUi.copy.rowLimitPlaceholder}
+                        autoComplete="off"
+                        aria-labelledby="wb-limit-caption"
+                        value={limitStr}
+                        onChange={(e) => {
+                          const raw = e.target.value.replace(/\D/g, "");
+                          if (raw === "") {
+                            setLimitStr("");
+                            return;
+                          }
+                          const n = Number(raw);
+                          if (n > 500) return;
+                          setLimitStr(raw);
+                        }}
+                      />
+                      <p id="wb-limit-caption" className="task-desc">
+                        {workbenchUi.copy.rowLimit}
+                      </p>
+                    </div>
+                    <div className="wb-limitsort-stacked-field">
+                      <select
+                        id="wb-order-col"
+                        className="wb-select"
+                        aria-labelledby="wb-order-col-caption"
+                        value={orderColumn}
+                        onChange={(e) => setOrderColumn(e.target.value)}
+                      >
+                        <option value="">{workbenchUi.copy.orderDefault}</option>
+                        {entity.columns.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.label}
+                          </option>
+                        ))}
+                      </select>
+                      <p id="wb-order-col-caption" className="task-desc">
+                        {workbenchUi.copy.orderBy}
+                      </p>
+                    </div>
+                    {orderColumn && (
+                      <div className="wb-limitsort-stacked-field">
+                        <select
+                          id="wb-order-dir"
+                          className="wb-select"
+                          aria-labelledby="wb-order-dir-caption"
+                          value={orderDir}
+                          onChange={(e) => setOrderDir(e.target.value as "ASC" | "DESC")}
+                        >
+                          <option value="ASC">ASC</option>
+                          <option value="DESC">DESC</option>
+                        </select>
+                        <p id="wb-order-dir-caption" className="task-desc">
+                          {workbenchUi.copy.orderDirection}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <p className="workbench-hint wb-limitsort-placeholder">2. {workbenchUi.copy.limitSortHeading}</p>
+              )}
+            </div>
           </div>
 
           {catalog && (
@@ -754,7 +827,7 @@ export function BenchmarkWorkbench() {
           {entity && (
             <>
               <div className="workbench-params">
-                <h3>2. {workbenchUi.copy.stepColumns}</h3>
+                <h3>3. {workbenchUi.copy.stepColumns}</h3>
                 <p className="workbench-hint">{workbenchUi.copy.columnsHint}</p>
                 <div className="column-picks">
                   {entity.columns.map((c) => (
@@ -771,7 +844,7 @@ export function BenchmarkWorkbench() {
               </div>
 
               <div className="workbench-params">
-                <h3>3. {workbenchUi.copy.filtersHeading}</h3>
+                <h3>4. {workbenchUi.copy.filtersHeading}</h3>
                 <p className="workbench-hint">{workbenchUi.copy.filtersHint}</p>
                 <div className="combinator-row">
                   <span className="field-label">{workbenchUi.copy.combineLabel}</span>
@@ -814,69 +887,6 @@ export function BenchmarkWorkbench() {
                 </button>
               </div>
 
-              <div className="workbench-params">
-                <h3>4. {workbenchUi.copy.limitSortHeading}</h3>
-                <div className="params-grid">
-                  <div className="field">
-                    <label className="field-label" htmlFor="wb-limit">
-                      {workbenchUi.copy.rowLimit}
-                    </label>
-                    <input
-                      id="wb-limit"
-                      className="wb-input"
-                      type="text"
-                      inputMode="numeric"
-                      placeholder={workbenchUi.copy.rowLimitPlaceholder}
-                      autoComplete="off"
-                      value={limitStr}
-                      onChange={(e) => {
-                        const raw = e.target.value.replace(/\D/g, "");
-                        if (raw === "") {
-                          setLimitStr("");
-                          return;
-                        }
-                        const n = Number(raw);
-                        if (n > 500) return;
-                        setLimitStr(raw);
-                      }}
-                    />
-                  </div>
-                  <div className="field">
-                    <label className="field-label" htmlFor="wb-order-col">
-                      {workbenchUi.copy.orderBy}
-                    </label>
-                    <select
-                      id="wb-order-col"
-                      className="wb-select"
-                      value={orderColumn}
-                      onChange={(e) => setOrderColumn(e.target.value)}
-                    >
-                      <option value="">{workbenchUi.copy.orderDefault}</option>
-                      {entity.columns.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  {orderColumn && (
-                    <div className="field">
-                      <label className="field-label" htmlFor="wb-order-dir">
-                        {workbenchUi.copy.orderDirection}
-                      </label>
-                      <select
-                        id="wb-order-dir"
-                        className="wb-select"
-                        value={orderDir}
-                        onChange={(e) => setOrderDir(e.target.value as "ASC" | "DESC")}
-                      >
-                        <option value="ASC">ASC</option>
-                        <option value="DESC">DESC</option>
-                      </select>
-                    </div>
-                  )}
-                </div>
-              </div>
             </>
           )}
 
