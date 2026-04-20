@@ -2,6 +2,8 @@
  * Generates reproducible social-graph data for benchmarking.
  * Env: PG_* same as backend; SEED_USERS, SEED_POSTS, etc.
  */
+import dns from "node:dns";
+dns.setDefaultResultOrder("ipv4first");
 import dotenv from "dotenv";
 import pg from "pg";
 import { dirname, join } from "node:path";
@@ -10,12 +12,31 @@ import { fileURLToPath } from "node:url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: join(__dirname, "..", ".env") });
 
+function loopbackHost(host) {
+  const h = String(host).toLowerCase();
+  return h === "127.0.0.1" || h === "localhost" || h === "::1" || h.endsWith(".localhost");
+}
+
+function resolveSsl(host) {
+  const mode = (process.env.PG_SSL ?? "").toLowerCase();
+  if (mode === "0" || mode === "false" || mode === "off") return false;
+  if (mode === "1" || mode === "true" || mode === "require") {
+    return { rejectUnauthorized: process.env.PG_SSL_REJECT_UNAUTHORIZED !== "0" };
+  }
+  if (loopbackHost(host)) return false;
+  return { rejectUnauthorized: process.env.PG_SSL_REJECT_UNAUTHORIZED !== "0" };
+}
+
+const pgHost = (process.env.PG_HOST ?? "").trim() || "127.0.0.1";
+const ssl = resolveSsl(pgHost);
+
 const cfg = {
-  host: process.env.PG_HOST ?? "127.0.0.1",
+  host: pgHost,
   port: Number(process.env.PG_PORT ?? 5432),
-  user: process.env.PG_USER ?? "bench",
-  password: process.env.PG_PASSWORD ?? "benchdev",
-  database: process.env.PG_DATABASE ?? "socialbench",
+  user: process.env.PG_USER ?? "postgres",
+  password: process.env.PG_PASSWORD ?? "",
+  database: process.env.PG_DATABASE ?? "postgres",
+  ...(ssl ? { ssl } : {}),
 };
 
 const N = {

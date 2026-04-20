@@ -1,249 +1,63 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
+import { BenchmarkWorkbench } from "./workbench/BenchmarkWorkbench";
 
-type VariantMeta = { id: string; label: string };
-
-type ScenarioListItem = {
-  id: string;
-  title: string;
-  description: string;
-  variants: VariantMeta[];
-};
-
-type BenchmarkResult = {
-  variantId: string;
-  label: string;
-  sql: string;
-  timingMs: number;
-  rowCount: number;
-  sampleRows: Record<string, unknown>[];
-  explain: unknown;
-};
+type HealthState =
+  | { status: "loading" }
+  | { status: "ready" }
+  | { status: "error"; message: string };
 
 export function App() {
-  const [health, setHealth] = useState<string>("…");
-  const [scenarios, setScenarios] = useState<ScenarioListItem[]>([]);
-  const [scenarioId, setScenarioId] = useState<string>("");
-  const [vA, setVA] = useState<string>("");
-  const [vB, setVB] = useState<string>("");
-  const [userId, setUserId] = useState<string>("1");
-  const [hashtag, setHashtag] = useState<string>("dev");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [results, setResults] = useState<BenchmarkResult[] | null>(null);
+  const [health, setHealth] = useState<HealthState>({ status: "loading" });
 
   useEffect(() => {
     fetch("/api/health")
-      .then((r) => r.json())
-      .then((j) => setHealth(j.ok ? "API + DB ok" : "API up"))
-      .catch(() => setHealth("API unreachable"));
-  }, []);
-
-  useEffect(() => {
-    fetch("/api/scenarios")
-      .then((r) => r.json())
-      .then((j: { scenarios: ScenarioListItem[] }) => {
-        setScenarios(j.scenarios ?? []);
-        const first = j.scenarios?.[0];
-        if (first) {
-          setScenarioId(first.id);
-          const [a, b] = first.variants;
-          if (a) setVA(a.id);
-          if (b) setVB(b.id);
+      .then(async (r) => {
+        const j = (await r.json().catch(() => ({}))) as {
+          ok?: boolean;
+          db?: string;
+          dbError?: string;
+        };
+        if (r.ok && j.ok && j.db === "up") {
+          setHealth({ status: "ready" });
+          return;
         }
+        const msg =
+          j.db === "down"
+            ? j.dbError ?? "Database did not respond."
+            : "API reported an unhealthy state.";
+        setHealth({ status: "error", message: msg });
       })
-      .catch(() => setError("Could not load scenarios (is the API running?)"));
+      .catch(() =>
+        setHealth({
+          status: "error",
+          message: "Cannot reach the API. Start the backend (port 4000) or check the Vite proxy.",
+        })
+      );
   }, []);
-
-  const active = useMemo(
-    () => scenarios.find((s) => s.id === scenarioId),
-    [scenarios, scenarioId]
-  );
-
-  const onScenarioChange = useCallback(
-    (id: string) => {
-      setScenarioId(id);
-      const s = scenarios.find((x) => x.id === id);
-      if (s?.variants?.length >= 2) {
-        setVA(s.variants[0].id);
-        setVB(s.variants[1].id);
-      }
-    },
-    [scenarios]
-  );
-
-  const run = useCallback(async () => {
-    if (!scenarioId || !vA || !vB) return;
-    setLoading(true);
-    setError(null);
-    setResults(null);
-    try {
-      const res = await fetch("/api/benchmark/run", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          scenarioId,
-          variantIds: [vA, vB],
-          params: { userId: Number(userId), hashtag },
-        }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? res.statusText);
-      setResults(json.results as BenchmarkResult[]);
-    } catch (e) {
-      setError(String((e as Error)?.message ?? e));
-    } finally {
-      setLoading(false);
-    }
-  }, [scenarioId, vA, vB, userId, hashtag]);
-
-  const bestMs = useMemo(() => {
-    if (!results?.length) return null;
-    return Math.min(...results.map((r) => r.timingMs));
-  }, [results]);
 
   return (
     <div className="app">
-      <header>
-        <h1>DatabaseOPT — relational query lab</h1>
-        <p>
-          Side-by-side timings and <code>EXPLAIN</code> for the same logical result. Data model:
-          users, follows, posts, comments, likes, hashtags, DMs, notifications.
+      <header className="site-header">
+        <div className="site-header-top">
+          <p className="site-eyebrow">Query path lab</p>
+          <div
+            className={`health-badge ${health.status === "ready" ? "health-badge--ok" : ""} ${health.status === "error" ? "health-badge--bad" : ""} ${health.status === "loading" ? "health-badge--pending" : ""}`}
+            role="status"
+            aria-live="polite"
+          >
+            {health.status === "loading" && "Checking connection…"}
+            {health.status === "ready" && "API & database online"}
+            {health.status === "error" && health.message}
+          </div>
+        </div>
+        <h1 className="site-title">DatabaseOPT</h1>
+        <p className="site-lede">
+          Run the <strong>same</strong> filters and column selection through TypeORM and raw SQL, one slot at a time.
+          The summary compares wall-clock time and payload size so you can see where each path pays off.
         </p>
-        <p className="status">Status: {health}</p>
       </header>
 
-      <section className="toolbar">
-        <div className="field">
-          <label htmlFor="scenario">Scenario</label>
-          <select
-            id="scenario"
-            value={scenarioId}
-            onChange={(e) => onScenarioChange(e.target.value)}
-          >
-            {scenarios.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.title}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="field">
-          <label htmlFor="va">Variant A</label>
-          <select
-            id="va"
-            value={vA}
-            onChange={(e) => setVA(e.target.value)}
-          >
-            {active?.variants.map((v) => (
-              <option key={v.id} value={v.id}>
-                {v.label}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="field">
-          <label htmlFor="vb">Variant B</label>
-          <select
-            id="vb"
-            value={vB}
-            onChange={(e) => setVB(e.target.value)}
-          >
-            {active?.variants.map((v) => (
-              <option key={v.id} value={v.id}>
-                {v.label}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="field">
-          <label htmlFor="userId">userId (params)</label>
-          <input
-            id="userId"
-            type="number"
-            min={1}
-            value={userId}
-            onChange={(e) => setUserId(e.target.value)}
-          />
-        </div>
-        <div className="field">
-          <label htmlFor="hashtag">hashtag (no #)</label>
-          <input
-            id="hashtag"
-            value={hashtag}
-            onChange={(e) => setHashtag(e.target.value)}
-          />
-        </div>
-        <button type="button" className="primary" disabled={loading} onClick={() => void run()}>
-          {loading ? "Running…" : "Run comparison"}
-        </button>
-      </section>
-
-      {active && (
-        <p style={{ color: "#9aa3ad", fontSize: "0.95rem" }}>{active.description}</p>
-      )}
-
-      {error && (
-        <p style={{ color: "#fca5a5" }} role="alert">
-          {error}
-        </p>
-      )}
-
-      {results && bestMs != null && (
-        <div className="grid">
-          {results.map((r) => {
-            const isBest = r.timingMs === bestMs && results.length > 1;
-            return (
-              <article key={r.variantId} className="panel">
-                <h2>{r.label}</h2>
-                <div className="meta">
-                  <span className={`pill ${isBest ? "fast" : "slow"}`}>
-                    {r.timingMs} ms
-                    {isBest ? " — faster" : ""}
-                  </span>
-                  <span className="pill">{r.rowCount} rows</span>
-                </div>
-                <pre className="sql">{r.sql}</pre>
-                <SampleTable rows={r.sampleRows} />
-                <details className="explain">
-                  <summary>EXPLAIN (FORMAT JSON) — PostgreSQL</summary>
-                  <pre>{JSON.stringify(r.explain, null, 2)}</pre>
-                </details>
-              </article>
-            );
-          })}
-        </div>
-      )}
+      <BenchmarkWorkbench />
     </div>
   );
-}
-
-function SampleTable({ rows }: { rows: Record<string, unknown>[] }) {
-  if (!rows?.length) return <p style={{ color: "#9aa3ad" }}>No rows.</p>;
-  const keys = Object.keys(rows[0]);
-  return (
-    <table className="sample">
-      <thead>
-        <tr>
-          {keys.map((k) => (
-            <th key={k}>{k}</th>
-          ))}
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((row, i) => (
-          <tr key={i}>
-            {keys.map((k) => (
-              <td key={k}>{formatCell(row[k])}</td>
-            ))}
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
-}
-
-function formatCell(v: unknown) {
-  if (v == null) return "";
-  if (typeof v === "object") return JSON.stringify(v);
-  return String(v);
 }

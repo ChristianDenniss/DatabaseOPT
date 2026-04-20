@@ -35,7 +35,7 @@ export function conditionalGlobalAuth(req: Request, res: Response, next: NextFun
     return;
   }
   const p = req.path;
-  if (p === "/api/health" || p.startsWith("/api/auth")) {
+  if (p === "/api/health" || p.startsWith("/api/auth") || p.startsWith("/api/bench")) {
     next();
     return;
   }

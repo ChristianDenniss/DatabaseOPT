@@ -4,9 +4,12 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
+    "kill:port": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/kill-port.ps1",
     "build": "tsc",
     "start": "node dist/index.js",
-    "seed": "node scripts/seed.mjs"
+    "seed": "node scripts/seed.mjs",
+    "migrate": "tsx src/run-migrations.ts",
+    "migrate:revert": "tsx src/run-migrations.ts revert"
   },
   "dependencies": {
     "cors": "^2.8.5",

@@ -4,11 +4,21 @@ Short log of non-obvious choices. Add new entries at the top with today’s date
 
 ---
 
+## Postgres connection: `PG_*` only + DNS (2026-04-19)
+
+**Decision:** Configure the API and seed script with discrete **`PG_*`** variables only (no `DATABASE_URL` / connection-string aliases in app code). TLS follows `PG_SSL` and `PG_SSL_REJECT_UNAUTHORIZED` the same way for every host.
+
+**Supporting tweak:** `dns.setDefaultResultOrder("ipv4first")` in `data-source.ts` and the seed script so some Windows networks resolve the DB host over IPv4 reliably.
+
+**Local Docker:** Compose maps Postgres to host **5433** by default; use `PG_SSL=off` against loopback.
+
+---
+
 ## PostgreSQL instead of MySQL (2026-04-19)
 
 **Decision:** Run the app on PostgreSQL 16 (Docker + `pg` + TypeORM `postgres` driver). Init SQL lives in `backend/docker/postgres-init/`. Environment variables use the `PG_*` prefix.
 
-**Why:** Easier alignment with many managed hosts (Neon, Supabase, RDS, Render Postgres, etc.), richer `EXPLAIN` tooling, and native enum types for visibility and notification kinds. Benchmark SQL was adjusted for PostgreSQL (`EXPLAIN (FORMAT JSON)`, `$1` parameters).
+**Why:** Easier alignment with many managed hosts (Neon, RDS, Render Postgres, etc.), richer `EXPLAIN` tooling, and native enum types for visibility and notification kinds. Benchmark SQL was adjusted for PostgreSQL (`EXPLAIN (FORMAT JSON)`, `$1` parameters).
 
 **Migration note:** Drop old Docker volumes if you still have a MySQL volume from earlier (`docker compose down -v`).
 
