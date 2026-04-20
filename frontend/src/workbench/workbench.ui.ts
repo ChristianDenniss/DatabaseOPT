@@ -82,9 +82,13 @@ export const workbenchUi = {
         title: "Search: ILIKE vs pg_trgm",
         description: "body contains “bench”; baseline vs trgm_gin (same ILIKE, trgm index eligible).",
       },
-      search_runtime_gin: {
+      search_runtime_vs_gin: {
         title: "Search: runtime tsvector vs stored GIN",
-        description: "body contains “bench”; fts_tsvector vs fts_gin.",
+        description: "body contains “bench”; fts_runtime vs fts_gin.",
+      },
+      search_stored_scan_vs_gin: {
+        title: "Search: stored @@ (heap-biased) vs GIN",
+        description: "body contains “bench”; fts_stored_scan (raw SQL) vs fts_gin — preprocessing vs index benefit.",
       },
       search_gist_vs_gin: {
         title: "Search: GiST vs GIN (stored tsvector)",
@@ -156,7 +160,8 @@ export function approachLabel(a: BenchApproach): string {
 
 const OPT_SHORT: Record<string, string> = {
   baseline: "B-tree baseline",
-  fts_tsvector: "FTS (runtime tsvector)",
+  fts_runtime: "FTS (runtime tsvector)",
+  fts_stored_scan: "FTS (stored @@ scan)",
   fts_gin: "FTS (GIN tsvector)",
   fts_gist: "FTS (GiST tsvector)",
   trgm_gin: "pg_trgm GIN",
@@ -168,7 +173,9 @@ const OPT_SHORT: Record<string, string> = {
 
 const OPT_LONG: Record<string, string> = {
   baseline: "default B-tree-oriented plans (including ILIKE substring search where used)",
-  fts_tsvector: "full-text search with tsvector built at query time",
+  fts_runtime: "full-text search with tsvector built at query time",
+  fts_stored_scan:
+    "same search_vector @@ plainto_tsquery as fts_gin, but raw SQL runs in a short transaction with index/bitmap scans discouraged to approximate heap evaluation of the stored vector",
   fts_gin: "full-text search using the stored tsvector column and its GIN index where applicable",
   fts_gist: "full-text search using the stored tsvector column and its GiST index where applicable",
   trgm_gin: "substring ILIKE workloads with a pg_trgm GIN index on body/bio columns",

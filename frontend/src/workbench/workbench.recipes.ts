@@ -7,7 +7,8 @@ export type RecipeId =
   | "covering_author"
   | "search_ilike_fts"
   | "search_ilike_trgm"
-  | "search_runtime_gin"
+  | "search_runtime_vs_gin"
+  | "search_stored_scan_vs_gin"
   | "search_gist_vs_gin";
 
 export type RecipeApplyResult = {
@@ -142,7 +143,7 @@ export function applyRecipe(recipeId: RecipeId, _catalog: WorkbenchCatalog, genI
           box(genId, "typeorm", ["trgm_gin"]),
         ],
       };
-    case "search_runtime_gin":
+    case "search_runtime_vs_gin":
       return {
         entityId: "posts",
         combinator: "and",
@@ -152,8 +153,22 @@ export function applyRecipe(recipeId: RecipeId, _catalog: WorkbenchCatalog, genI
         orderColumn: "",
         orderDir: "DESC",
         boxes: [
-          box(genId, "typeorm", ["fts_tsvector"]),
+          box(genId, "typeorm", ["fts_runtime"]),
           box(genId, "typeorm", ["fts_gin"]),
+        ],
+      };
+    case "search_stored_scan_vs_gin":
+      return {
+        entityId: "posts",
+        combinator: "and",
+        conditions: [colRow(genId, "body", "contains", "literal", "bench")],
+        selectColumns: ["id", "author_id", "body", "visibility", "created_at"],
+        limitStr: "",
+        orderColumn: "",
+        orderDir: "DESC",
+        boxes: [
+          box(genId, "raw_sql", ["fts_stored_scan"]),
+          box(genId, "raw_sql", ["fts_gin"]),
         ],
       };
     case "search_gist_vs_gin":
@@ -180,6 +195,7 @@ export const RECIPE_ORDER: RecipeId[] = [
   "covering_author",
   "search_ilike_fts",
   "search_ilike_trgm",
-  "search_runtime_gin",
+  "search_runtime_vs_gin",
+  "search_stored_scan_vs_gin",
   "search_gist_vs_gin",
 ];

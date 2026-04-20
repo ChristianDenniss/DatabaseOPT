@@ -2,7 +2,8 @@ import type { BenchApproach, CatalogEntity, FilterConditionRow, WorkbenchCatalog
 
 /** Optimizations that change literal `contains` on indexed text (body / bio). */
 export const TEXT_SEARCH_OPTIMIZATION_IDS = new Set<string>([
-  "fts_tsvector",
+  "fts_runtime",
+  "fts_stored_scan",
   "fts_gin",
   "fts_gist",
   "trgm_gin",

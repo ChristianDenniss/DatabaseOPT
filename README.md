@@ -33,7 +33,7 @@ The API is **TypeScript** with **TypeORM** (PostgreSQL driver). Schema is applie
    npm run seed
    ```
 
-   Optional: set `SEED_USERS`, `SEED_POSTS`, etc. in `backend/.env` before seeding.
+   Optional: set `SEED_USERS`, `SEED_POSTS`, `SEED_COMMENTS`, `SEED_POST_LIKES`, `SEED_COMMENT_LIKES`, etc. in `backend/.env` before seeding (defaults are large; trim for quick local runs).
 
 4. Frontend:
 
@@ -61,10 +61,11 @@ npm run dev
 ## API
 
 - `GET /api/health` — DB connectivity
-- `GET /api/scenarios` — built-in benchmark scenarios
-- `POST /api/benchmark/run` — body: `{ scenarioId, variantIds: [a,b], params?: { userId, hashtag } }`
+- `GET /api/bench/catalog` — entities, columns, filter operators, optimization ids for the query workbench
+- `GET /api/bench/column-samples` — optional sample values for filter UX
+- `POST /api/bench/execute-slot` — run one compiled query variant (body: filters, entity, approach `typeorm` | `raw_sql`, optimizations, etc.)
 
-Optional: set `ALLOW_RAW_QUERIES=1` in `backend/.env` for `POST /api/benchmark/raw` with two or more **single-statement** `SELECT`s (local use only).
+CRUD routes live under `/api/users`, `/api/posts`, `/api/comments`, `/api/likes`, `/api/follows`, `/api/auth`. See [`docs/decisions.md`](docs/decisions.md) for auth and Redis caching behavior.
 
 ## Deploying
 
