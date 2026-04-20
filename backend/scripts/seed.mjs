@@ -1,6 +1,6 @@
 /**
  * Generates reproducible social-graph data for benchmarking.
- * Env: PG_* same as backend; SEED_USERS, SEED_POSTS, etc.
+ * Env: PG_* same as backend; SEED_USERS, SEED_POSTS, SEED_COMMENT_LIKES, etc.
  */
 import dns from "node:dns";
 dns.setDefaultResultOrder("ipv4first");
@@ -40,17 +40,18 @@ const cfg = {
 };
 
 const N = {
-  users: Number(process.env.SEED_USERS ?? 1200),
-  posts: Number(process.env.SEED_POSTS ?? 8000),
-  comments: Number(process.env.SEED_COMMENTS ?? 45000),
-  postLikes: Number(process.env.SEED_POST_LIKES ?? 150000),
-  follows: Number(process.env.SEED_FOLLOWS ?? 15000),
-  hashtags: Number(process.env.SEED_HASHTAGS ?? 180),
-  postHashtagLinks: Number(process.env.SEED_POST_HASHTAG_LINKS ?? 12000),
-  savedPosts: Number(process.env.SEED_SAVED_POSTS ?? 4000),
-  conversations: Number(process.env.SEED_CONVERSATIONS ?? 800),
-  messages: Number(process.env.SEED_MESSAGES ?? 6000),
-  notifications: Number(process.env.SEED_NOTIFICATIONS ?? 8000),
+  users: Number(process.env.SEED_USERS ?? 12000),
+  posts: Number(process.env.SEED_POSTS ?? 80000),
+  comments: Number(process.env.SEED_COMMENTS ?? 450000),
+  postLikes: Number(process.env.SEED_POST_LIKES ?? 1500000),
+  commentLikes: Number(process.env.SEED_COMMENT_LIKES ?? 1500000),
+  follows: Number(process.env.SEED_FOLLOWS ?? 150000),
+  hashtags: Number(process.env.SEED_HASHTAGS ?? 1800),
+  postHashtagLinks: Number(process.env.SEED_POST_HASHTAG_LINKS ?? 120000),
+  savedPosts: Number(process.env.SEED_SAVED_POSTS ?? 40000),
+  conversations: Number(process.env.SEED_CONVERSATIONS ?? 8000),
+  messages: Number(process.env.SEED_MESSAGES ?? 60000),
+  notifications: Number(process.env.SEED_NOTIFICATIONS ?? 80000),
 };
 
 const TAGS = [
@@ -251,6 +252,17 @@ async function main() {
     const likeRows = [...likes].map((k) => k.split(",").map(Number));
     await batchInsert(client, "post_likes", ["user_id", "post_id"], likeRows);
 
+    console.log(`Comment likes ${N.commentLikes}…`);
+    const commentLikes = new Set();
+    guard = 0;
+    while (commentLikes.size < N.commentLikes && guard++ < N.commentLikes * 25) {
+      const uid = 1 + Math.floor(rng() * N.users);
+      const cid = 1 + Math.floor(rng() * commentCount);
+      commentLikes.add(`${uid},${cid}`);
+    }
+    const commentLikeRows = [...commentLikes].map((k) => k.split(",").map(Number));
+    await batchInsert(client, "comment_likes", ["user_id", "comment_id"], commentLikeRows);
+
     console.log(`Hashtags ${N.hashtags}…`);
     const tagRows = [];
     const used = new Set();
@@ -355,7 +367,7 @@ async function main() {
          SELECT p.id, $1::bigint FROM posts p
          WHERE p.visibility = 'public'::post_visibility
          ORDER BY p.id
-         LIMIT 800
+         LIMIT 8000
          ON CONFLICT (post_id, hashtag_id) DO NOTHING`,
         [hidRow.id]
       );

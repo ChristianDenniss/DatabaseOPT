@@ -218,9 +218,14 @@ export const BENCH_GLOBAL_OPTIMIZATIONS: {
     approaches: ["typeorm", "raw_sql"],
   },
   {
-    id: "fts_tsvector",
-    label: "FTS (to_tsvector at query time)",
+    id: "fts_runtime",
+    label: "FTS runtime (to_tsvector at query time)",
     approaches: ["typeorm", "raw_sql"],
+  },
+  {
+    id: "fts_stored_scan",
+    label: "FTS stored vector, heap-friendly (raw SQL: disables index/bitmap scans for this query)",
+    approaches: ["raw_sql"],
   },
   {
     id: "fts_gin",

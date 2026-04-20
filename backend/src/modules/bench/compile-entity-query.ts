@@ -101,7 +101,7 @@ function pushParam(state: ParamState, value: unknown): string {
 
 /**
  * How to evaluate string `contains` when text-search optimizations are selected.
- * Priority: GIN tsvector → GiST tsvector → runtime tsvector → pg_trgm (ILIKE) → default ILIKE.
+ * Priority: GIN tsvector → GiST tsvector → stored @@ heap run → runtime tsvector → pg_trgm (ILIKE) → default ILIKE.
  */
 function ftsContainsMode(
   entity: BenchEntity,
@@ -109,17 +109,33 @@ function ftsContainsMode(
   colKind: BenchEntityColumn["kind"],
   op: FilterOp,
   optimizationIds: readonly string[]
-): "gin" | "gist" | "runtime" | "trgm" | "none" {
+): "gin" | "gist" | "stored_scan" | "runtime" | "trgm" | "none" {
   if (op !== "contains" || colKind !== "string") return "none";
   const ids = new Set(optimizationIds);
-  const wantsFts = ids.has("fts_tsvector") || ids.has("fts_gin") || ids.has("fts_gist");
+  const wantsFts =
+    ids.has("fts_runtime") || ids.has("fts_gin") || ids.has("fts_gist") || ids.has("fts_stored_scan");
   const wantsTrgm = ids.has("trgm_gin");
   if (!wantsFts && !wantsTrgm) return "none";
   if (ids.has("fts_gin") && ftsGinUsesStoredSearchVector(entity.id, columnId)) return "gin";
   if (ids.has("fts_gist") && ftsGistUsesStoredSearchVector(entity.id, columnId)) return "gist";
-  if (ids.has("fts_tsvector")) return "runtime";
+  if (ids.has("fts_stored_scan") && ftsGinUsesStoredSearchVector(entity.id, columnId)) return "stored_scan";
+  if (ids.has("fts_runtime")) return "runtime";
   if (wantsTrgm && trgmGinUsesTextColumn(entity.id, columnId)) return "trgm";
   return "none";
+}
+
+/** Wrap raw SELECT in a short transaction with SET LOCAL so index/bitmap scans are discouraged (stored @@ vs index benefit for fts_stored_scan). */
+function shouldApplyFtsStoredScanPragma(
+  entity: BenchEntity,
+  conditions: Pick<ExecuteSlotBody, "conditions">["conditions"],
+  optimizationIds: readonly string[]
+): boolean {
+  if (!optimizationIds.includes("fts_stored_scan")) return false;
+  return conditions.some((c) => {
+    if (c.kind !== "column" || c.op !== "contains" || c.valueMode !== "literal") return false;
+    if (c.value === undefined || c.value === null || String(c.value).trim() === "") return false;
+    return ftsGinUsesStoredSearchVector(entity.id, c.column);
+  });
 }
 
 function parseWindowBounds(windowFrom: string, windowTo: string): { ok: true; from: Date; to: Date } | { ok: false; error: string } {
@@ -268,7 +284,7 @@ function buildOneCondition(
       return { ok: true, sql: `${ta}.${qc} <= ${pushParam(state, v)}` };
     case "contains": {
       const fts = ftsContainsMode(entity, col.id, col.kind, c.op, optimizationIds);
-      if (fts === "gin" || fts === "gist") {
+      if (fts === "gin" || fts === "gist" || fts === "stored_scan") {
         return {
           ok: true,
           sql: `${ta}.${quoteIdent("search_vector")} @@ plainto_tsquery('english', ${pushParam(state, String(v))})`,
@@ -380,7 +396,11 @@ export function compileEntityQuery(
   const selectIds = body.selectColumns;
 
   const runRaw = async (qr: QueryRunner): Promise<unknown[]> => {
-    const rows = (await qr.query(sql, flatParams)) as Record<string, unknown>[];
+    const usePragma = shouldApplyFtsStoredScanPragma(entity, body.conditions, body.optimizationIds);
+    const sqlToRun = usePragma
+      ? `BEGIN;\nSET LOCAL enable_indexscan = off;\nSET LOCAL enable_bitmapscan = off;\n${sql};\nCOMMIT;`
+      : sql;
+    const rows = (await qr.query(sqlToRun, flatParams)) as Record<string, unknown>[];
     return rows.map((r) => mapRow(entity, r, selectIds));
   };
 
