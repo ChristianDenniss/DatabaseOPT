@@ -309,11 +309,13 @@ details.explain pre {
 /* Workbench */
 .workbench {
   margin-top: 2rem;
-  padding: 1.5rem 1.5rem 1.65rem;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
+  padding: 1.4rem;
+  background: linear-gradient(180deg, #ffffff 0%, #f6f8fb 100%);
+  border: 1px solid rgba(255, 255, 255, 0.92);
+  border-radius: 14px;
+  box-shadow:
+    0 18px 38px rgba(22, 32, 55, 0.09),
+    inset 0 1px 0 rgba(255, 255, 255, 0.88);
 }
 
 .workbench h2 {
@@ -330,10 +332,35 @@ details.explain pre {
   line-height: 1.5;
 }
 
+.workbench-recipes .recipe-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.workbench-recipes .recipe-btn {
+  max-width: 20rem;
+  text-align: left;
+  line-height: 1.35;
+}
+
+.workbench-recipes .recipe-btn .muted {
+  display: block;
+  margin-top: 0.2rem;
+  font-weight: 400;
+}
+
 .workbench-task,
 .workbench-params,
 .workbench-slots {
   margin-bottom: 1.5rem;
+  padding: 1rem;
+  border-radius: 12px;
+  border: 1px solid rgba(170, 178, 194, 0.2);
+  background: linear-gradient(180deg, #ffffff 0%, #f9fbff 100%);
+  box-shadow:
+    0 7px 18px rgba(16, 24, 40, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.84);
 }
 
 .workbench-params,
@@ -361,22 +388,27 @@ details.explain pre {
 
 .wb-select,
 .wb-input {
-  background: var(--surface);
+  background: linear-gradient(180deg, #ffffff 0%, #f5f7fb 100%);
   color: var(--text);
-  border: 1px solid var(--border-strong);
+  border: 1px solid rgba(124, 133, 149, 0.24);
   border-radius: var(--radius-sm);
-  padding: 0.45rem 0.55rem;
+  padding: 0.5rem 0.65rem;
   min-width: 0;
   width: auto;
   max-width: 100%;
   font-size: 0.875rem;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 1px 2px rgba(16, 24, 40, 0.06);
 }
 
 .wb-select:focus,
 .wb-input:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.12);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.88),
+    0 0 0 3px rgba(var(--accent-rgb), 0.16);
 }
 
 .workbench-task .wb-select {
@@ -574,14 +606,21 @@ details.explain pre {
 }
 
 .comparison-slot {
-  border: 1px solid var(--border);
+  border: 1px solid rgba(126, 136, 153, 0.22);
   border-radius: var(--radius);
   padding: 1rem 1.1rem;
-  background: var(--surface-raised);
+  background: linear-gradient(180deg, #ffffff 0%, #f4f7fb 100%);
+  box-shadow:
+    0 8px 20px rgba(18, 26, 38, 0.07),
+    inset 0 1px 0 rgba(255, 255, 255, 0.88);
 }
 
 .comparison-slot.complete {
-  border-color: rgba(10, 125, 67, 0.22);
+  border-color: rgba(10, 125, 67, 0.3);
+  box-shadow:
+    0 8px 20px rgba(18, 26, 38, 0.07),
+    0 0 0 1px rgba(10, 125, 67, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.88);
 }
 
 .comparison-slot.incomplete {
@@ -691,20 +730,24 @@ details.explain pre {
 }
 
 .btn-secondary {
-  background: var(--surface);
+  background: linear-gradient(180deg, #ffffff 0%, #edf2fb 100%);
   color: var(--text);
-  border: 1px solid var(--border-strong);
+  border: 1px solid rgba(124, 133, 149, 0.24);
   border-radius: var(--radius-sm);
-  padding: 0.45rem 0.9rem;
+  padding: 0.5rem 0.95rem;
   font-weight: 500;
   cursor: pointer;
   font-size: 0.8125rem;
   width: fit-content;
   max-width: 100%;
+  box-shadow:
+    0 2px 7px rgba(16, 24, 40, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95);
 }
 
 .btn-secondary:hover:not(:disabled) {
-  background: var(--surface-raised);
+  background: linear-gradient(180deg, #ffffff 0%, #e6eefb 100%);
+  border-color: rgba(var(--accent-rgb), 0.32);
 }
 
 .btn-secondary:disabled {
@@ -715,15 +758,18 @@ details.explain pre {
 .btn-ghost {
   background: transparent;
   color: var(--text-secondary);
-  border: none;
+  border: 1px solid transparent;
+  border-radius: 999px;
   font-size: 0.8125rem;
   cursor: pointer;
   font-weight: 500;
-  padding: 0.25rem 0;
+  padding: 0.25rem 0.6rem;
 }
 
 .btn-ghost:hover {
   color: var(--text);
+  border-color: rgba(var(--accent-rgb), 0.24);
+  background: rgba(var(--accent-rgb), 0.08);
 }
 
 .workbench-actions {
@@ -778,8 +824,13 @@ details.explain pre {
 
 .results-panel {
   margin-top: 1.5rem;
-  padding-top: 1.25rem;
-  border-top: 1px solid var(--border);
+  padding: 1rem;
+  border: 1px solid rgba(170, 178, 194, 0.2);
+  border-radius: 12px;
+  background: linear-gradient(180deg, #ffffff 0%, #f7f9fd 100%);
+  box-shadow:
+    0 8px 20px rgba(16, 24, 40, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
 
 .results-narrative {
@@ -809,20 +860,29 @@ details.explain pre {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.8125rem;
+  background: #fff;
+  border: 1px solid rgba(124, 133, 149, 0.2);
+  border-radius: 10px;
+  overflow: hidden;
 }
 
 .summary-table th,
 .summary-table td {
-  border-bottom: 1px solid var(--border);
-  padding: 0.55rem 0.5rem;
+  border-bottom: 1px solid rgba(124, 133, 149, 0.16);
+  padding: 0.62rem 0.58rem;
   text-align: left;
   vertical-align: top;
 }
 
 .summary-table th {
   font-weight: 500;
-  color: var(--text-secondary);
+  color: #5f6572;
   font-size: 0.75rem;
+  background: linear-gradient(180deg, #f7f9fd 0%, #edf2fa 100%);
+}
+
+.summary-table tbody tr:nth-child(even) {
+  background: #fbfcff;
 }
 
 .summary-table code {
@@ -902,9 +962,12 @@ details.explain pre {
   gap: 0.5rem 0.65rem;
   align-items: center;
   padding: 0.55rem 0.65rem;
-  background: var(--surface);
-  border: 1px solid var(--border);
+  background: linear-gradient(180deg, #ffffff 0%, #f9fbff 100%);
+  border: 1px solid rgba(124, 133, 149, 0.2);
   border-radius: var(--radius-sm);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.88),
+    0 1px 4px rgba(16, 24, 40, 0.04);
 }
 
 .filter-row > select.wb-input.tight {

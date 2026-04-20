@@ -17,7 +17,17 @@ import {
   sortResultRowsForDisplay,
   workbenchUi,
 } from "./workbench.ui";
+import { optimizationsForSlot, queryHasApplicableTextSearch } from "./workbench-optimizations";
+import { applyRecipe, RECIPE_ORDER, type RecipeId } from "./workbench.recipes";
 import { useColumnSamples } from "./useColumnSamples";
+
+function parseOptionalCount(raw: string): number | null {
+  const t = raw.trim();
+  if (t === "") return null;
+  const n = Number(t);
+  if (!Number.isInteger(n) || n < 0) return null;
+  return n;
+}
 
 function newId(): string {
   return typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -39,48 +49,27 @@ function defaultSelectColumns(e: CatalogEntity): string[] {
   return e.columns.map((c) => c.id);
 }
 
-const FTS_OPTIMIZATION_IDS = new Set<string>(["fts_tsvector", "fts_gin"]);
-
 function optimizationsForApproach(catalog: WorkbenchCatalog | null, approach: BenchApproach | null) {
   if (!catalog || !approach) return [];
   return catalog.optimizations.filter((o) => o.approaches.includes(approach));
 }
 
-/** FTS toggles only affect SQL for literal string `contains`; hide them otherwise. */
-function queryHasLiteralStringContains(
-  catalog: WorkbenchCatalog,
-  entity: CatalogEntity,
-  conditions: FilterConditionRow[]
-): boolean {
-  return conditions.some((row) => {
-    if (row.op !== "contains" || row.valueMode !== "literal") return false;
-    const col = entity.columns.find((c) => c.id === row.column);
-    if (!col || col.kind !== "string") return false;
-    return conditionRowComplete(catalog, entity, row);
-  });
-}
-
-function optimizationsForSlot(
-  catalog: WorkbenchCatalog | null,
-  approach: BenchApproach | null,
-  entity: CatalogEntity | null,
-  conditions: FilterConditionRow[]
-) {
-  const base = optimizationsForApproach(catalog, approach);
-  if (!catalog || !entity || !queryHasLiteralStringContains(catalog, entity, conditions)) {
-    return base.filter((o) => !FTS_OPTIMIZATION_IDS.has(o.id));
-  }
-  return base;
+function conditionsSupportTypeorm(conditions: FilterConditionRow[]): boolean {
+  return conditions.every((row) => row.kind === "column");
 }
 
 function boxIsComplete(
   catalog: WorkbenchCatalog | null,
   box: ComparisonBox,
   entity: CatalogEntity | null,
-  conditions: FilterConditionRow[]
+  conditions: FilterConditionRow[],
+  selectColumns: string[],
+  isRowComplete: (row: FilterConditionRow) => boolean
 ): boolean {
   if (!catalog || box.approach === null || !entity) return false;
-  const allowed = new Set(optimizationsForSlot(catalog, box.approach, entity, conditions).map((o) => o.id));
+  const allowed = new Set(
+    optimizationsForSlot(catalog, box.approach, entity, conditions, selectColumns, isRowComplete).map((o) => o.id)
+  );
   if (box.optimizationIds.length === 0) return false;
   return box.optimizationIds.every((id) => allowed.has(id));
 }
@@ -112,7 +101,30 @@ function literalOk(col: CatalogColumn, op: FilterOp, value: string): boolean {
   return t.length > 0;
 }
 
+function userPostCountWindowComplete(row: FilterConditionRow): boolean {
+  const min = parseOptionalCount(row.minCount);
+  const max = parseOptionalCount(row.maxCount);
+  if (min == null && max == null) return false;
+  if (row.windowFrom.trim() === "" || row.windowTo.trim() === "") return false;
+  if (Number.isNaN(new Date(row.windowFrom).getTime()) || Number.isNaN(new Date(row.windowTo).getTime()))
+    return false;
+  if (min != null && max != null && min > max) return false;
+  return true;
+}
+
+function userPostContainsWindowComplete(row: FilterConditionRow): boolean {
+  if (row.keyword.trim() === "") return false;
+  if (!userPostCountWindowComplete(row)) return false;
+  return true;
+}
+
 function conditionRowComplete(catalog: WorkbenchCatalog, entity: CatalogEntity, row: FilterConditionRow): boolean {
+  if (row.kind === "user_posts_count_window") {
+    return entity.id === "users" && userPostCountWindowComplete(row);
+  }
+  if (row.kind === "user_posts_contains_window") {
+    return entity.id === "users" && userPostContainsWindowComplete(row);
+  }
   const col = entity.columns.find((c) => c.id === row.column);
   if (!col?.filterable) return false;
   const ops = opsForColumn(catalog, col);
@@ -172,6 +184,37 @@ function WorkbenchFilterRow({ row, entity, catalog, onPatch, onRemove }: FilterR
 
   return (
     <div className="filter-row">
+      {entity.id === "users" && (
+        <select
+          className="wb-input tight"
+          value={row.kind}
+          onChange={(e) =>
+            onPatch(row.id, {
+              kind: e.target.value as FilterConditionRow["kind"],
+              column: entity.columns.find((c) => c.filterable)?.id ?? "",
+              op: "eq",
+              valueMode: "literal",
+              value: "",
+              refColumn: "",
+              windowFrom: "",
+              windowTo: "",
+              minCount: "",
+              maxCount: "",
+              keyword: "",
+            })
+          }
+        >
+          <option value="column">{workbenchUi.copy.conditionTypes.column}</option>
+          <option value="user_posts_count_window">
+            {workbenchUi.copy.conditionTypes.user_posts_count_window}
+          </option>
+          <option value="user_posts_contains_window">
+            {workbenchUi.copy.conditionTypes.user_posts_contains_window}
+          </option>
+        </select>
+      )}
+      {row.kind === "column" ? (
+        <>
       <select
         className="wb-input tight"
         value={row.column}
@@ -253,6 +296,53 @@ function WorkbenchFilterRow({ row, entity, catalog, onPatch, onRemove }: FilterR
       <button type="button" className="btn-ghost" onClick={() => onRemove(row.id)}>
         {workbenchUi.copy.removeFilter}
       </button>
+        </>
+      ) : (
+        <>
+          <input
+            className="wb-input tight"
+            type="datetime-local"
+            value={row.windowFrom}
+            onChange={(e) => onPatch(row.id, { windowFrom: e.target.value })}
+            title={workbenchUi.copy.windowFrom}
+          />
+          <input
+            className="wb-input tight"
+            type="datetime-local"
+            value={row.windowTo}
+            onChange={(e) => onPatch(row.id, { windowTo: e.target.value })}
+            title={workbenchUi.copy.windowTo}
+          />
+          <input
+            className="wb-input tight"
+            type="number"
+            min={0}
+            placeholder={workbenchUi.copy.minCount}
+            value={row.minCount}
+            onChange={(e) => onPatch(row.id, { minCount: e.target.value })}
+          />
+          <input
+            className="wb-input tight"
+            type="number"
+            min={0}
+            placeholder={workbenchUi.copy.maxCount}
+            value={row.maxCount}
+            onChange={(e) => onPatch(row.id, { maxCount: e.target.value })}
+          />
+          {row.kind === "user_posts_contains_window" && (
+            <input
+              className="wb-input grow"
+              type="text"
+              placeholder={workbenchUi.copy.keywordPlaceholder}
+              value={row.keyword}
+              onChange={(e) => onPatch(row.id, { keyword: e.target.value })}
+            />
+          )}
+          <button type="button" className="btn-ghost" onClick={() => onRemove(row.id)}>
+            {workbenchUi.copy.removeFilter}
+          </button>
+        </>
+      )}
     </div>
   );
 }
@@ -281,40 +371,81 @@ export function BenchmarkWorkbench() {
     [catalog, entityId]
   );
 
-  useEffect(() => {
-    fetch("/api/bench/catalog")
-      .then((r) => r.json())
-      .then((j: WorkbenchCatalog) => {
-        setCatalog(j);
-        if (j.entities[0]) {
-          setEntityId(j.entities[0].id);
-        }
-      })
-      .catch(() => setCatalogError("Could not load bench catalog (is the API running on :4000?)"));
-  }, []);
+  const isRowComplete = useCallback(
+    (row: FilterConditionRow) =>
+      !!(catalog && entity && conditionRowComplete(catalog, entity, row)),
+    [catalog, entity]
+  );
 
-  useEffect(() => {
-    if (!entity) return;
-    setSelectColumns(defaultSelectColumns(entity));
+  const resetWorkbenchForEntity = useCallback((next: CatalogEntity) => {
+    setSelectColumns(defaultSelectColumns(next));
     setConditions([]);
     setCombinator("and");
     setOrderColumn("");
     setOrderDir(
-      ["posts", "comments", "post_likes", "user_follows"].includes(entity.id) ? "DESC" : "ASC"
+      ["posts", "comments", "post_likes", "user_follows"].includes(next.id) ? "DESC" : "ASC"
     );
     setLimitStr("");
     setBoxes(emptyBoxes(workbenchUi.limits.defaultSlots));
     setSlotResults([]);
     setPhase("idle");
     setRunError(null);
-  }, [entity?.id]);
+  }, []);
+
+  const applyWorkbenchRecipe = useCallback(
+    (recipeId: RecipeId) => {
+      if (!catalog) return;
+      const r = applyRecipe(recipeId, catalog, newId);
+      setEntityId(r.entityId);
+      setCombinator(r.combinator);
+      setConditions(r.conditions);
+      setSelectColumns(r.selectColumns);
+      setLimitStr(r.limitStr);
+      setOrderColumn(r.orderColumn);
+      setOrderDir(r.orderDir);
+      setBoxes(r.boxes);
+      setSlotResults([]);
+      setPhase("idle");
+      setRunError(null);
+    },
+    [catalog]
+  );
+
+  useEffect(() => {
+    fetch("/api/bench/catalog")
+      .then((r) => r.json())
+      .then((j: WorkbenchCatalog) => {
+        setCatalog(j);
+        const first = j.entities[0];
+        if (first) {
+          setEntityId(first.id);
+          setSelectColumns(defaultSelectColumns(first));
+          setConditions([]);
+          setCombinator("and");
+          setOrderColumn("");
+          setOrderDir(
+            ["posts", "comments", "post_likes", "user_follows"].includes(first.id) ? "DESC" : "ASC"
+          );
+          setLimitStr("");
+          setBoxes(emptyBoxes(workbenchUi.limits.defaultSlots));
+          setSlotResults([]);
+          setPhase("idle");
+          setRunError(null);
+        }
+      })
+      .catch(() => setCatalogError("Could not load bench catalog (is the API running on :4000?)"));
+  }, []);
 
   const canExecute = useMemo(() => {
     if (!catalog || !entity || boxes.length < workbenchUi.limits.minSlots || phase === "running")
       return false;
     if (!queryPlanComplete(catalog, entity, conditions, selectColumns, limitStr)) return false;
-    return boxes.every((b) => boxIsComplete(catalog, b, entity, conditions));
-  }, [catalog, entity, boxes, conditions, selectColumns, limitStr, phase]);
+    return boxes.every((b) =>
+      boxIsComplete(catalog, b, entity, conditions, selectColumns, isRowComplete)
+    );
+  }, [catalog, entity, boxes, conditions, selectColumns, limitStr, phase, isRowComplete]);
+
+  const typeormAllowed = useMemo(() => conditionsSupportTypeorm(conditions), [conditions]);
 
   const addCondition = useCallback(() => {
     if (!entity) return;
@@ -324,11 +455,17 @@ export function BenchmarkWorkbench() {
       ...prev,
       {
         id: newId(),
+        kind: "column",
         column: first?.id ?? "",
         op: ops[0] ?? "eq",
         valueMode: "literal",
         value: "",
         refColumn: "",
+        windowFrom: "",
+        windowTo: "",
+        minCount: "",
+        maxCount: "",
+        keyword: "",
       },
     ]);
   }, [catalog, entity]);
@@ -342,7 +479,7 @@ export function BenchmarkWorkbench() {
       prev.map((r) => {
         if (r.id !== id) return r;
         const next = { ...r, ...patch };
-        if (patch.column != null && entity) {
+        if ((patch.column != null || patch.kind === "column") && entity) {
           const col = entity.columns.find((c) => c.id === patch.column);
           const o = catalog && col ? opsForColumn(catalog, col) : [];
           if (!o.includes(next.op)) next.op = o[0] ?? "eq";
@@ -378,17 +515,20 @@ export function BenchmarkWorkbench() {
 
   const setApproach = useCallback(
     (boxId: string, approach: BenchApproach) => {
+      if (approach === "typeorm" && !typeormAllowed) return;
       setBoxes((prev) =>
         prev.map((b) => {
           if (b.id !== boxId) return b;
           const allowed = new Set(
-            optimizationsForSlot(catalog, approach, entity, conditions).map((o) => o.id)
+            optimizationsForSlot(catalog, approach, entity, conditions, selectColumns, isRowComplete).map(
+              (o) => o.id
+            )
           );
           return { ...b, approach, optimizationIds: b.optimizationIds.filter((x) => allowed.has(x)) };
         })
       );
     },
-    [catalog, entity, conditions]
+    [catalog, entity, conditions, selectColumns, isRowComplete, typeormAllowed]
   );
 
   /** Drop FTS optimization ids when the query no longer has a literal string `contains`. */
@@ -398,7 +538,11 @@ export function BenchmarkWorkbench() {
       let changed = false;
       const next = prev.map((box) => {
         if (box.approach === null) return box;
-        const allowed = new Set(optimizationsForSlot(catalog, box.approach, entity, conditions).map((o) => o.id));
+        const allowed = new Set(
+          optimizationsForSlot(catalog, box.approach, entity, conditions, selectColumns, isRowComplete).map(
+            (o) => o.id
+          )
+        );
         const filtered = box.optimizationIds.filter((id) => allowed.has(id));
         if (filtered.length !== box.optimizationIds.length) {
           changed = true;
@@ -408,7 +552,20 @@ export function BenchmarkWorkbench() {
       });
       return changed ? next : prev;
     });
-  }, [catalog, entity, conditions]);
+  }, [catalog, entity, conditions, selectColumns, isRowComplete]);
+
+  useEffect(() => {
+    if (typeormAllowed) return;
+    setBoxes((prev) => {
+      let changed = false;
+      const next = prev.map((box) => {
+        if (box.approach !== "typeorm") return box;
+        changed = true;
+        return { ...box, approach: "raw_sql" };
+      });
+      return changed ? next : prev;
+    });
+  }, [typeormAllowed]);
 
   const toggleOptimization = useCallback((boxId: string, optId: string, checked: boolean) => {
     setBoxes((prev) =>
@@ -431,11 +588,31 @@ export function BenchmarkWorkbench() {
         entityId: entity.id,
         combinator,
         conditions: conditions.map((c) => ({
-          column: c.column,
-          op: c.op,
-          valueMode: c.valueMode,
-          value: c.valueMode === "literal" ? c.value : undefined,
-          refColumn: c.valueMode === "column_ref" ? c.refColumn : undefined,
+          ...(c.kind === "column"
+            ? {
+                kind: "column",
+                column: c.column,
+                op: c.op,
+                valueMode: c.valueMode,
+                value: c.valueMode === "literal" ? c.value : undefined,
+                refColumn: c.valueMode === "column_ref" ? c.refColumn : undefined,
+              }
+            : c.kind === "user_posts_count_window"
+              ? {
+                  kind: "user_posts_count_window",
+                  windowFrom: c.windowFrom,
+                  windowTo: c.windowTo,
+                  minCount: c.minCount.trim() === "" ? undefined : Number(c.minCount),
+                  maxCount: c.maxCount.trim() === "" ? undefined : Number(c.maxCount),
+                }
+              : {
+                  kind: "user_posts_contains_window",
+                  windowFrom: c.windowFrom,
+                  windowTo: c.windowTo,
+                  minCount: c.minCount.trim() === "" ? undefined : Number(c.minCount),
+                  maxCount: c.maxCount.trim() === "" ? undefined : Number(c.maxCount),
+                  keyword: c.keyword,
+                }),
         })),
         selectColumns,
         approach: box.approach,
@@ -534,7 +711,12 @@ export function BenchmarkWorkbench() {
               id="wb-entity"
               className="wb-select"
               value={entityId}
-              onChange={(e) => setEntityId(e.target.value)}
+              onChange={(e) => {
+                const id = e.target.value;
+                setEntityId(id);
+                const next = catalog?.entities.find((x) => x.id === id);
+                if (next) resetWorkbenchForEntity(next);
+              }}
             >
               {catalog.entities.map((e) => (
                 <option key={e.id} value={e.id}>
@@ -544,6 +726,30 @@ export function BenchmarkWorkbench() {
             </select>
             {entity && <p className="task-desc">{entity.description}</p>}
           </div>
+
+          {catalog && (
+            <div className="workbench-recipes workbench-params">
+              <h3>{workbenchUi.copy.recipesHeading}</h3>
+              <p className="workbench-hint">{workbenchUi.copy.recipesHint}</p>
+              <div className="recipe-grid">
+                {RECIPE_ORDER.map((rid) => {
+                  const card = workbenchUi.copy.recipeCards[rid];
+                  return (
+                    <button
+                      key={rid}
+                      type="button"
+                      className="btn-secondary recipe-btn"
+                      title={card.description}
+                      onClick={() => applyWorkbenchRecipe(rid)}
+                    >
+                      <strong>{card.title}</strong>
+                      <span className="muted small">{card.description}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {entity && (
             <>
@@ -691,13 +897,27 @@ export function BenchmarkWorkbench() {
             </div>
             <div className="slots-list">
               {boxes.map((box, index) => {
-                const opts = optimizationsForSlot(catalog, box.approach, entity, conditions);
-                const complete = boxIsComplete(catalog, box, entity, conditions);
-                const ftsHidden =
+                const opts = optimizationsForSlot(
+                  catalog,
+                  box.approach,
+                  entity,
+                  conditions,
+                  selectColumns,
+                  isRowComplete
+                );
+                const complete = boxIsComplete(
+                  catalog,
+                  box,
+                  entity,
+                  conditions,
+                  selectColumns,
+                  isRowComplete
+                );
+                const textSearchOptsHidden =
                   !!catalog &&
                   !!entity &&
                   box.approach != null &&
-                  !queryHasLiteralStringContains(catalog, entity, conditions);
+                  !queryHasApplicableTextSearch(entity, isRowComplete, conditions);
                 return (
                   <article key={box.id} className={`comparison-slot ${complete ? "complete" : "incomplete"}`}>
                     <div className="slot-head">
@@ -715,6 +935,7 @@ export function BenchmarkWorkbench() {
                             type="radio"
                             name={`approach-${box.id}`}
                             checked={box.approach === "typeorm"}
+                            disabled={!typeormAllowed}
                             onChange={() => setApproach(box.id, "typeorm")}
                           />
                           {approachLabel("typeorm")}
@@ -737,6 +958,9 @@ export function BenchmarkWorkbench() {
                         <p className="muted small">{workbenchUi.copy.pickEngineFirst}</p>
                       ) : (
                         <>
+                          {!typeormAllowed && (
+                            <p className="muted small">{workbenchUi.copy.rawSqlOnlyHint}</p>
+                          )}
                           <ul className="opt-list">
                             {opts.map((o) => (
                               <li key={o.id}>
@@ -751,7 +975,7 @@ export function BenchmarkWorkbench() {
                               </li>
                             ))}
                           </ul>
-                          {ftsHidden && (
+                          {textSearchOptsHidden && (
                             <p className="muted small">{workbenchUi.copy.ftsOptionsHint}</p>
                           )}
                         </>

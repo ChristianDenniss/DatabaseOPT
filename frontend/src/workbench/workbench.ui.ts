@@ -22,7 +22,20 @@ export const workbenchUi = {
     combineAnd: "Match all (AND)",
     combineOr: "Match any (OR)",
     addFilter: "Add condition",
+    addAdvancedFilter: "Add advanced condition",
     removeFilter: "Remove",
+    conditionType: "Condition type",
+    conditionTypes: {
+      column: "Column comparison",
+      user_posts_count_window: "User posts count in time window",
+      user_posts_contains_window: "User posts with text in time window",
+    },
+    windowFrom: "From (timestamp)",
+    windowTo: "To (timestamp)",
+    minCount: "Minimum posts",
+    maxCount: "Maximum posts",
+    keyword: "Contains text",
+    keywordPlaceholder: "e.g. good",
     limitSortHeading: "Limit and sort",
     rowLimit: "Row limit",
     rowLimitPlaceholder: "No limit",
@@ -38,8 +51,46 @@ export const workbenchUi = {
     executionLabel: "Engine",
     optimizationsLabel: "Options",
     pickEngineFirst: "Choose an engine to see options.",
+    rawSqlOnlyHint: "This query uses advanced filters, so only Raw SQL is available.",
     ftsOptionsHint:
-      "FTS options appear when at least one filter is a completed string “contains” with a literal value (the cases where ILIKE vs tsvector differs).",
+      "Full-text and substring index options appear when at least one filter is a completed string “contains” with a literal value (where ILIKE vs tsvector vs pg_trgm differs).",
+    recipesHeading: "Comparison recipes",
+    recipesHint:
+      "Each recipe fills filters, columns, and two execution slots. Only index options that match your current query are listed under each slot.",
+    recipeCards: {
+      lookup_pk: {
+        title: "Lookup: B-tree vs hash (PK)",
+        description: "Posts with id = 1; slot A baseline, slot B baseline + hash_pk.",
+      },
+      range_composite: {
+        title: "Range + composite (author + time)",
+        description: "Posts with author_id = 1 and created_at cutoff; compare baseline vs composite index tag.",
+      },
+      partial_public: {
+        title: "Filtered: partial index (public posts)",
+        description: "visibility = public and created_at cutoff; compare baseline vs partial index tag.",
+      },
+      covering_author: {
+        title: "Covering index (narrow select)",
+        description: "author_id = 1, projecting id + author_id only; compare baseline vs covering index tag.",
+      },
+      search_ilike_fts: {
+        title: "Search: ILIKE vs stored FTS (GIN)",
+        description: "body contains “bench”; baseline (ILIKE) vs fts_gin (search_vector @@).",
+      },
+      search_ilike_trgm: {
+        title: "Search: ILIKE vs pg_trgm",
+        description: "body contains “bench”; baseline vs trgm_gin (same ILIKE, trgm index eligible).",
+      },
+      search_runtime_gin: {
+        title: "Search: runtime tsvector vs stored GIN",
+        description: "body contains “bench”; fts_tsvector vs fts_gin.",
+      },
+      search_gist_vs_gin: {
+        title: "Search: GiST vs GIN (stored tsvector)",
+        description: "body contains “bench”; same @@ query, slot A fts_gist vs slot B fts_gin (planner may pick different indexes).",
+      },
+    },
     runningSlot: "Running",
     execute: "Run comparison",
     executeRunning: "Running...",
@@ -104,15 +155,30 @@ export function approachLabel(a: BenchApproach): string {
 }
 
 const OPT_SHORT: Record<string, string> = {
-  baseline: "default",
+  baseline: "B-tree baseline",
   fts_tsvector: "FTS (runtime tsvector)",
-  fts_gin: "FTS (stored tsvector + GIN)",
+  fts_gin: "FTS (GIN tsvector)",
+  fts_gist: "FTS (GiST tsvector)",
+  trgm_gin: "pg_trgm GIN",
+  hash_pk: "Hash PK",
+  composite_author_time: "Composite B-tree",
+  partial_public_posts: "Partial B-tree",
+  covering_author_posts: "Covering B-tree",
 };
 
 const OPT_LONG: Record<string, string> = {
-  baseline: "the default path (including ILIKE substring search where used)",
+  baseline: "default B-tree-oriented plans (including ILIKE substring search where used)",
   fts_tsvector: "full-text search with tsvector built at query time",
   fts_gin: "full-text search using the stored tsvector column and its GIN index where applicable",
+  fts_gist: "full-text search using the stored tsvector column and its GiST index where applicable",
+  trgm_gin: "substring ILIKE workloads with a pg_trgm GIN index on body/bio columns",
+  hash_pk: "equality on bigint id where PostgreSQL may use a hash index on the primary key",
+  composite_author_time:
+    "filters that combine posts.author_id with created_at so the composite B-tree (author_id, created_at) can apply",
+  partial_public_posts:
+    "posts filtered to public visibility with a created_at predicate so a partial index on public rows can apply",
+  covering_author_posts:
+    "posts filtered by author_id with a narrow select list so a covering index on author_id INCLUDE (...) may avoid heap fetches",
 };
 
 /** Parses `entity:approach:opt+opt|…` strategy prefix from the API. */

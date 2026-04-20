@@ -214,7 +214,7 @@ export const BENCH_GLOBAL_OPTIMIZATIONS: {
 }[] = [
   {
     id: "baseline",
-    label: "Default execution path",
+    label: "B-tree baseline (default plans, ILIKE substring search where used)",
     approaches: ["typeorm", "raw_sql"],
   },
   {
@@ -227,13 +227,53 @@ export const BENCH_GLOBAL_OPTIMIZATIONS: {
     label: "FTS (GIN on stored tsvector)",
     approaches: ["typeorm", "raw_sql"],
   },
+  {
+    id: "fts_gist",
+    label: "FTS (GiST on stored tsvector)",
+    approaches: ["typeorm", "raw_sql"],
+  },
+  {
+    id: "trgm_gin",
+    label: "Substring search (pg_trgm GIN on text)",
+    approaches: ["typeorm", "raw_sql"],
+  },
+  {
+    id: "hash_pk",
+    label: "Hash index on PK (equality on id — planner may use hash)",
+    approaches: ["typeorm", "raw_sql"],
+  },
+  {
+    id: "composite_author_time",
+    label: "Composite B-tree (posts: author_id + created_at — use both in filters)",
+    approaches: ["typeorm", "raw_sql"],
+  },
+  {
+    id: "partial_public_posts",
+    label: "Partial B-tree (posts public rows by created_at)",
+    approaches: ["typeorm", "raw_sql"],
+  },
+  {
+    id: "covering_author_posts",
+    label: "Covering B-tree (posts author_id INCLUDE body, visibility, created_at)",
+    approaches: ["typeorm", "raw_sql"],
+  },
 ];
 
-const FTS_GIN_STORED_KEYS = new Set<string>(["posts:body", "comments:body", "users:bio"]);
+const FTS_STORED_VECTOR_KEYS = new Set<string>(["posts:body", "comments:body", "users:bio"]);
 
 /** True when `fts_gin` + contains on this column should use the stored `search_vector` + GIN. */
 export function ftsGinUsesStoredSearchVector(entityId: BenchEntity["id"], columnId: string): boolean {
-  return FTS_GIN_STORED_KEYS.has(`${entityId}:${columnId}`);
+  return FTS_STORED_VECTOR_KEYS.has(`${entityId}:${columnId}`);
+}
+
+/** True when `fts_gist` + contains should use stored `search_vector` + GiST. */
+export function ftsGistUsesStoredSearchVector(entityId: BenchEntity["id"], columnId: string): boolean {
+  return FTS_STORED_VECTOR_KEYS.has(`${entityId}:${columnId}`);
+}
+
+/** True when `trgm_gin` applies to this text column (ILIKE / substring workloads). */
+export function trgmGinUsesTextColumn(entityId: BenchEntity["id"], columnId: string): boolean {
+  return FTS_STORED_VECTOR_KEYS.has(`${entityId}:${columnId}`);
 }
 
 export function getBenchEntity(id: string): BenchEntity | undefined {

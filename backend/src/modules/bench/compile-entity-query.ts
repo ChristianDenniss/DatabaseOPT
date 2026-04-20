@@ -11,6 +11,8 @@ import type { ConditionInput } from "./bench.schemas.js";
 import {
   FILTER_OPS_BY_KIND,
   ftsGinUsesStoredSearchVector,
+  ftsGistUsesStoredSearchVector,
+  trgmGinUsesTextColumn,
   type BenchEntity,
   type BenchEntityColumn,
   type FilterOp,
@@ -97,19 +99,90 @@ function pushParam(state: ParamState, value: unknown): string {
   return `$${state.params.length}`;
 }
 
-/** How to evaluate string `contains` when FTS optimizations are selected. */
+/**
+ * How to evaluate string `contains` when text-search optimizations are selected.
+ * Priority: GIN tsvector → GiST tsvector → runtime tsvector → pg_trgm (ILIKE) → default ILIKE.
+ */
 function ftsContainsMode(
   entity: BenchEntity,
   columnId: string,
   colKind: BenchEntityColumn["kind"],
   op: FilterOp,
   optimizationIds: readonly string[]
-): "gin" | "runtime" | "none" {
+): "gin" | "gist" | "runtime" | "trgm" | "none" {
   if (op !== "contains" || colKind !== "string") return "none";
   const ids = new Set(optimizationIds);
-  if (!ids.has("fts_tsvector") && !ids.has("fts_gin")) return "none";
+  const wantsFts = ids.has("fts_tsvector") || ids.has("fts_gin") || ids.has("fts_gist");
+  const wantsTrgm = ids.has("trgm_gin");
+  if (!wantsFts && !wantsTrgm) return "none";
   if (ids.has("fts_gin") && ftsGinUsesStoredSearchVector(entity.id, columnId)) return "gin";
-  return "runtime";
+  if (ids.has("fts_gist") && ftsGistUsesStoredSearchVector(entity.id, columnId)) return "gist";
+  if (ids.has("fts_tsvector")) return "runtime";
+  if (wantsTrgm && trgmGinUsesTextColumn(entity.id, columnId)) return "trgm";
+  return "none";
+}
+
+function parseWindowBounds(windowFrom: string, windowTo: string): { ok: true; from: Date; to: Date } | { ok: false; error: string } {
+  const from = new Date(windowFrom);
+  const to = new Date(windowTo);
+  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
+    return { ok: false, error: "Invalid time window: windowFrom and windowTo must be valid timestamps" };
+  }
+  if (from > to) {
+    return { ok: false, error: "Invalid time window: windowFrom must be <= windowTo" };
+  }
+  return { ok: true, from, to };
+}
+
+function buildUserPostsWindowCondition(
+  entity: BenchEntity,
+  tableAlias: string,
+  state: ParamState,
+  args: {
+    windowFrom: string;
+    windowTo: string;
+    minCount?: number;
+    maxCount?: number;
+    keyword?: string;
+  }
+): { ok: true; sql: string } | { ok: false; error: string } {
+  if (entity.id !== "users") {
+    return { ok: false, error: "User posts window filters are only valid for the users dataset" };
+  }
+  const bounds = parseWindowBounds(args.windowFrom, args.windowTo);
+  if (!bounds.ok) return bounds;
+
+  const hasMin = typeof args.minCount === "number";
+  const hasMax = typeof args.maxCount === "number";
+  if (!hasMin && !hasMax) {
+    return { ok: false, error: "At least one of minCount or maxCount is required" };
+  }
+  if (hasMin && hasMax && (args.minCount as number) > (args.maxCount as number)) {
+    return { ok: false, error: "minCount cannot be greater than maxCount" };
+  }
+
+  const fromSlot = pushParam(state, bounds.from);
+  const toSlot = pushParam(state, bounds.to);
+  const whereParts = [
+    `p.author_id = ${tableAlias}.id`,
+    `p.created_at >= ${fromSlot}`,
+    `p.created_at <= ${toSlot}`,
+  ];
+  if (args.keyword != null) {
+    const escaped = String(args.keyword).replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
+    whereParts.push(`p.body ILIKE ${pushParam(state, `%${escaped}%`)} ESCAPE '\\'`);
+  }
+  const countSql = `(SELECT COUNT(*) FROM "posts" AS p WHERE ${whereParts.join(" AND ")})`;
+  if (hasMin && hasMax) {
+    return {
+      ok: true,
+      sql: `${countSql} BETWEEN ${pushParam(state, args.minCount)} AND ${pushParam(state, args.maxCount)}`,
+    };
+  }
+  if (hasMin) {
+    return { ok: true, sql: `${countSql} >= ${pushParam(state, args.minCount)}` };
+  }
+  return { ok: true, sql: `${countSql} <= ${pushParam(state, args.maxCount)}` };
 }
 
 function buildOneCondition(
@@ -119,6 +192,24 @@ function buildOneCondition(
   state: ParamState,
   optimizationIds: readonly string[]
 ): { ok: true; sql: string } | { ok: false; error: string } {
+  if (c.kind === "user_posts_count_window") {
+    return buildUserPostsWindowCondition(entity, tableAlias, state, {
+      windowFrom: c.windowFrom,
+      windowTo: c.windowTo,
+      minCount: c.minCount,
+      maxCount: c.maxCount,
+    });
+  }
+  if (c.kind === "user_posts_contains_window") {
+    return buildUserPostsWindowCondition(entity, tableAlias, state, {
+      windowFrom: c.windowFrom,
+      windowTo: c.windowTo,
+      minCount: c.minCount,
+      maxCount: c.maxCount,
+      keyword: c.keyword,
+    });
+  }
+
   const col = getColumn(entity, c.column);
   if (!col || !col.filterable) return { ok: false, error: `Unknown or non-filterable column: ${c.column}` };
   const opErr = assertOpAllowed(col, c.op);
@@ -177,7 +268,7 @@ function buildOneCondition(
       return { ok: true, sql: `${ta}.${qc} <= ${pushParam(state, v)}` };
     case "contains": {
       const fts = ftsContainsMode(entity, col.id, col.kind, c.op, optimizationIds);
-      if (fts === "gin") {
+      if (fts === "gin" || fts === "gist") {
         return {
           ok: true,
           sql: `${ta}.${quoteIdent("search_vector")} @@ plainto_tsquery('english', ${pushParam(state, String(v))})`,

@@ -59,9 +59,15 @@ export type ComparisonBox = {
 
 export type FilterConditionRow = {
   id: string;
+  kind: "column" | "user_posts_count_window" | "user_posts_contains_window";
   column: string;
   op: FilterOp;
   valueMode: "literal" | "column_ref";
   value: string;
   refColumn: string;
+  windowFrom: string;
+  windowTo: string;
+  minCount: string;
+  maxCount: string;
+  keyword: string;
 };

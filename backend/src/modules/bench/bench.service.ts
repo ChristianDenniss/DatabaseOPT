@@ -7,6 +7,10 @@ import type { BenchApproach } from "./bench.catalog.js";
 import { compileEntityQuery } from "./compile-entity-query.js";
 import type { ExecuteSlotBody } from "./bench.schemas.js";
 
+function supportsTypeorm(body: ExecuteSlotBody): boolean {
+  return body.conditions.every((c) => c.kind === "column");
+}
+
 function validateOptimizations(approach: BenchApproach, optimizationIds: string[]): string | null {
   const validIds = new Set(BENCH_GLOBAL_OPTIMIZATIONS.map((o) => o.id));
   for (const id of optimizationIds) {
@@ -30,6 +34,9 @@ function strategyName(body: ExecuteSlotBody): string {
 }
 
 function buildStrategy(body: ExecuteSlotBody): { error: string } | { strategy: BenchmarkStrategy<unknown> } {
+  if (body.approach === "typeorm" && !supportsTypeorm(body)) {
+    return { error: "TypeORM is only available for basic column conditions. Use Raw SQL for advanced filters." };
+  }
   const optErr = validateOptimizations(body.approach, body.optimizationIds);
   if (optErr) return { error: optErr };
 

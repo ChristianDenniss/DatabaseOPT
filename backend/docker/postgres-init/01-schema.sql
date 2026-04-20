@@ -145,6 +145,24 @@ CREATE TABLE notifications (
 CREATE INDEX idx_notif_user_unread ON notifications (user_id, read_at, created_at);
 CREATE INDEX idx_notif_actor ON notifications (actor_id);
 
+-- Bench / index-type showcase (see migration 1740800000000-BenchIndexTypes)
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
+CREATE INDEX idx_posts_body_trgm ON posts USING gin (body gin_trgm_ops);
+CREATE INDEX idx_comments_body_trgm ON comments USING gin (body gin_trgm_ops);
+CREATE INDEX idx_users_bio_trgm ON users USING gin (bio gin_trgm_ops);
+
+CREATE INDEX idx_posts_search_vector_gist ON posts USING gist (search_vector);
+CREATE INDEX idx_comments_search_vector_gist ON comments USING gist (search_vector);
+CREATE INDEX idx_users_search_vector_gist ON users USING gist (search_vector);
+
+CREATE INDEX idx_posts_id_hash ON posts USING hash (id);
+CREATE INDEX idx_users_id_hash ON users USING hash (id);
+
+CREATE INDEX idx_posts_public_created_at ON posts (created_at DESC) WHERE visibility = 'public'::post_visibility;
+
+CREATE INDEX idx_posts_author_covering ON posts (author_id) INCLUDE (body, visibility, created_at);
+
 CREATE OR REPLACE FUNCTION trigger_set_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN

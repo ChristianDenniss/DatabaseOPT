@@ -13,13 +13,37 @@ export const filterOpSchema = z.enum([
   "in",
 ]);
 
-export const conditionSchema = z.object({
+const columnConditionSchema = z.object({
+  kind: z.literal("column"),
   column: z.string().min(1),
   op: filterOpSchema,
   valueMode: z.enum(["literal", "column_ref"]),
   value: z.unknown().optional(),
   refColumn: z.string().optional(),
 });
+
+const userPostsCountWindowConditionSchema = z.object({
+  kind: z.literal("user_posts_count_window"),
+  windowFrom: z.string().min(1),
+  windowTo: z.string().min(1),
+  minCount: z.number().int().min(0).optional(),
+  maxCount: z.number().int().min(0).optional(),
+});
+
+const userPostsContainsWindowConditionSchema = z.object({
+  kind: z.literal("user_posts_contains_window"),
+  windowFrom: z.string().min(1),
+  windowTo: z.string().min(1),
+  minCount: z.number().int().min(0).optional(),
+  maxCount: z.number().int().min(0).optional(),
+  keyword: z.string().min(1),
+});
+
+export const conditionSchema = z.discriminatedUnion("kind", [
+  columnConditionSchema,
+  userPostsCountWindowConditionSchema,
+  userPostsContainsWindowConditionSchema,
+]);
 
 export const executeSlotBodySchema = z.object({
   entityId: z.enum(["users", "posts", "comments", "post_likes", "user_follows"]),
