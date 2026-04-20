@@ -332,17 +332,37 @@ details.explain pre {
   line-height: 1.5;
 }
 
-.workbench-recipes .recipe-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.5rem;
-  max-width: 44rem;
+/* Recipes fill panel width; column count follows panel width (not viewport alone) */
+.workbench-recipes {
+  container-type: inline-size;
+  container-name: recipes;
+  width: 100%;
+  max-width: 100%;
 }
 
-@media (max-width: 30rem) {
+.workbench-recipes .recipe-grid {
+  display: grid;
+  width: 100%;
+  max-width: none;
+  gap: 0.5rem;
+  grid-template-columns: 1fr;
+}
+
+@container recipes (min-width: 34rem) {
   .workbench-recipes .recipe-grid {
-    grid-template-columns: 1fr;
-    max-width: none;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container recipes (min-width: 52rem) {
+  .workbench-recipes .recipe-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@container recipes (min-width: 70rem) {
+  .workbench-recipes .recipe-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
 
@@ -909,28 +929,42 @@ details.explain pre {
   padding: 1rem;
   border: 1px solid rgba(170, 178, 194, 0.2);
   border-radius: 12px;
-  background: linear-gradient(180deg, #ffffff 0%, #f7f9fd 100%);
-  box-shadow:
-    0 8px 20px rgba(16, 24, 40, 0.06),
-    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  background: var(--surface);
+  box-shadow: 0 7px 18px rgba(16, 24, 40, 0.06);
 }
 
 .results-narrative {
   margin-top: 1.25rem;
   max-width: 52rem;
+  padding: 0.9rem 1.05rem;
+  border-radius: 10px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-raised);
 }
 
 .results-narrative h4 {
-  margin: 0 0 0.5rem;
+  margin: 0 0 0.55rem;
   font-size: 0.9375rem;
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: -0.02em;
   color: var(--text);
 }
 
 .results-narrative p {
-  margin: 0 0 0.5rem;
-  font-size: 0.875rem;
-  line-height: 1.45;
+  margin: 0 0 0.55rem;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.results-narrative p strong {
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.015em;
+}
+
+.results-narrative .narrative-muted {
+  font-weight: 400;
   color: var(--text-secondary);
 }
 
@@ -960,7 +994,7 @@ details.explain pre {
   font-weight: 500;
   color: #5f6572;
   font-size: 0.75rem;
-  background: linear-gradient(180deg, #f7f9fd 0%, #edf2fa 100%);
+  background: #edf2fa;
 }
 
 .summary-table tbody tr:nth-child(even) {

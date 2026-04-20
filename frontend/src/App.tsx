@@ -39,7 +39,7 @@ export function App() {
     <div className="app">
       <header className="site-header">
         <div className="site-header-top">
-          <p className="site-eyebrow">Query path lab</p>
+          <p className="site-eyebrow">Query lab</p>
           <div
             className={`health-badge ${health.status === "ready" ? "health-badge--ok" : ""} ${health.status === "error" ? "health-badge--bad" : ""} ${health.status === "loading" ? "health-badge--pending" : ""}`}
             role="status"

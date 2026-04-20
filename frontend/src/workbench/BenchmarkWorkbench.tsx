@@ -16,6 +16,7 @@ import {
   renderSummaryCell,
   sortResultRowsForDisplay,
   workbenchUi,
+  type NarrativeSegment,
 } from "./workbench.ui";
 import { optimizationsForSlot, queryHasApplicableTextSearch } from "./workbench-optimizations";
 import { applyRecipe, RECIPE_ORDER, type RecipeId } from "./workbench.recipes";
@@ -1055,7 +1056,11 @@ export function BenchmarkWorkbench() {
                         className={cell.className}
                         title={col.id === "strategy" ? row.result.strategy : undefined}
                       >
-                        {cell.wrapCode ? <code>{cell.text}</code> : cell.text}
+                        {cell.wrapCode ? (
+                          <code>{typeof cell.text === "string" ? cell.text : String(cell.text)}</code>
+                        ) : (
+                          typeof cell.text === "string" ? cell.text : String(cell.text)
+                        )}
                       </td>
                     );
                   })}
@@ -1067,9 +1072,31 @@ export function BenchmarkWorkbench() {
           {resultsNarrative.length > 0 && (
             <div className="results-narrative">
               <h4>{workbenchUi.copy.summaryNarrativeTitle}</h4>
-              {resultsNarrative.map((paragraph, i) => (
-                <p key={i}>{paragraph}</p>
-              ))}
+              {resultsNarrative.map((paragraph, i) => {
+                const segments: NarrativeSegment[] = Array.isArray(paragraph)
+                  ? paragraph
+                  : paragraph != null && typeof paragraph === "object" && "text" in paragraph
+                    ? [paragraph as NarrativeSegment]
+                    : [];
+                return (
+                  <p key={i}>
+                    {segments.map((seg, j) => {
+                      const t = typeof seg.text === "string" ? seg.text : String(seg.text ?? "");
+                      if (seg.variant === "strong") {
+                        return <strong key={j}>{t}</strong>;
+                      }
+                      if (seg.variant === "muted") {
+                        return (
+                          <span key={j} className="narrative-muted">
+                            {t}
+                          </span>
+                        );
+                      }
+                      return <span key={j}>{t}</span>;
+                    })}
+                  </p>
+                );
+              })}
             </div>
           )}
         </div>
@@ -1080,15 +1107,24 @@ export function BenchmarkWorkbench() {
 
 function SlotResultPreview({ result }: { result: SlotApiResult }) {
   if (result.error) {
-    return <p className="slot-err">{result.error}</p>;
+    const err = typeof result.error === "string" ? result.error : String(result.error);
+    return <p className="slot-err">{err}</p>;
   }
+  const ms = result.executionTimeMs ?? workbenchUi.copy.emptyCell;
+  const msLabel = typeof ms === "number" || typeof ms === "string" ? ms : String(ms);
+  const bytes =
+    typeof result.payloadSizeBytes === "number" || typeof result.payloadSizeBytes === "string"
+      ? result.payloadSizeBytes
+      : String(result.payloadSizeBytes);
+  const rows =
+    typeof result.rowCount === "number" || typeof result.rowCount === "string"
+      ? result.rowCount
+      : String(result.rowCount);
   return (
     <p className="slot-ok">
-      <span className="pill">
-        {result.executionTimeMs ?? workbenchUi.copy.emptyCell} ms
-      </span>
-      <span className="pill">{result.payloadSizeBytes} B</span>
-      <span className="pill">{result.rowCount} rows</span>
+      <span className="pill">{msLabel} ms</span>
+      <span className="pill">{bytes} B</span>
+      <span className="pill">{rows} rows</span>
     </p>
   );
 }

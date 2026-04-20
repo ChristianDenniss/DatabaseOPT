@@ -244,12 +244,12 @@ export const BENCH_GLOBAL_OPTIMIZATIONS: {
   },
   {
     id: "hash_pk",
-    label: "Hash index on PK (equality on id — planner may use hash)",
+    label: "Hash index on PK (equality on id; planner may use hash)",
     approaches: ["typeorm", "raw_sql"],
   },
   {
     id: "composite_author_time",
-    label: "Composite B-tree (posts: author_id + created_at — use both in filters)",
+    label: "Composite B-tree (posts: author_id + created_at; use both in filters)",
     approaches: ["typeorm", "raw_sql"],
   },
   {

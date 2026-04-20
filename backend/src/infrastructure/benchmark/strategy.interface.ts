@@ -7,7 +7,7 @@ export type StrategyExecutionContext = {
 
 /**
  * One execution path (e.g. ORM vs raw). Must not contain timing or serialization logic.
- * Use `ctx.queryRunner.manager` or `ctx.queryRunner.query()` only — not the global DataSource manager.
+ * Use `ctx.queryRunner.manager` or `ctx.queryRunner.query()` only, not the global DataSource manager.
  */
 export type BenchmarkStrategy<T> = {
   readonly name: string;

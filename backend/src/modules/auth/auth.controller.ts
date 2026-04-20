@@ -14,7 +14,7 @@ function tokenResponse(accessToken: string, refreshToken: string) {
 }
 
 /**
- * Issues access + refresh JWTs for a user id. **Insecure** — only when AUTH_ISSUE_DEV_TOKENS=true.
+ * Issues access + refresh JWTs for a user id. **Insecure**: only when AUTH_ISSUE_DEV_TOKENS=true.
  */
 export async function issueDevToken(req: Request, res: Response): Promise<void> {
   if (process.env.AUTH_ISSUE_DEV_TOKENS !== "true") {

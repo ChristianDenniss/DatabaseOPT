@@ -54,45 +54,54 @@ export const workbenchUi = {
     rawSqlOnlyHint: "This query uses advanced filters, so only Raw SQL is available.",
     ftsOptionsHint:
       "Full-text and substring index options appear when at least one filter is a completed string “contains” with a literal value (where ILIKE vs tsvector vs pg_trgm differs).",
-    recipesHeading: "Comparison recipes",
+    recipesHeading: "Pre-built Comparisons",
     recipesHint:
-      "Each recipe fills filters, columns, and two execution slots. Only index options that match your current query are listed under each slot.",
+      "One click loads a realistic filter, projection, and two slots so you can compare timings and plans without wiring everything by hand.",
     recipeCards: {
       lookup_pk: {
-        title: "Lookup: B-tree vs hash (PK)",
-        description: "Posts with id = 1; slot A baseline, slot B baseline + hash_pk.",
+        title: "Primary-key lookup: btree vs hash",
+        description:
+          "Single-row fetch by id. Contrasts the default primary-key plan with the optional hash-index hint so you can see when hash might compete on equality.",
       },
       range_composite: {
-        title: "Range + composite (author + time)",
-        description: "Posts with author_id = 1 and created_at cutoff; compare baseline vs composite index tag.",
+        title: "Author feed: composite vs generic btree",
+        description:
+          "One author’s posts over a time window. Shows when a composite (author + time) index lines up with the filter versus relying on separate btree paths.",
       },
       partial_public: {
-        title: "Filtered: partial index (public posts)",
-        description: "visibility = public and created_at cutoff; compare baseline vs partial index tag.",
+        title: "Public-only timeline: partial index",
+        description:
+          "Public posts in a date range. Highlights a partial index that ignores private rows so you can compare selective btree scans against a full-table baseline.",
       },
       covering_author: {
-        title: "Covering index (narrow select)",
-        description: "author_id = 1, projecting id + author_id only; compare baseline vs covering index tag.",
+        title: "Narrow “by author” list: covering index",
+        description:
+          "Filter by author but return only a few columns. Explores when an INCLUDE-style covering index can satisfy the query with fewer heap touches.",
       },
       search_ilike_fts: {
-        title: "Search: ILIKE vs stored FTS (GIN)",
-        description: "body contains “bench”; baseline (ILIKE) vs fts_gin (search_vector @@).",
+        title: "Text search: substring vs full text (GIN)",
+        description:
+          "Same natural-language filter: baseline substring matching against stored-token full text so you can contrast ILIKE plans with GIN-backed tsvector.",
       },
       search_ilike_trgm: {
-        title: "Search: ILIKE vs pg_trgm",
-        description: "body contains “bench”; baseline vs trgm_gin (same ILIKE, trgm index eligible).",
+        title: "Text search: substring with trigram help",
+        description:
+          "Still substring-style matching. Adds the pg_trgm index story so you can see when trigram GIN changes the plan without changing the SQL shape.",
       },
       search_runtime_vs_gin: {
-        title: "Search: runtime tsvector vs stored GIN",
-        description: "body contains “bench”; fts_runtime vs fts_gin.",
+        title: "Full text: compute at read time vs stored vector",
+        description:
+          "Same search intent: builds tsvector in the query versus using a maintained search column so you can separate “parse text now” from “read precomputed tokens”.",
       },
       search_stored_scan_vs_gin: {
-        title: "Search: stored @@ (heap-biased) vs GIN",
-        description: "body contains “bench”; fts_stored_scan (raw SQL) vs fts_gin — preprocessing vs index benefit.",
+        title: "Full text: heap-style scan vs GIN index",
+        description:
+          "Same stored-vector predicate in raw SQL. Biases away from bitmap/index scans on one slot and normal GIN on the other to isolate index benefit from stored preprocessing.",
       },
       search_gist_vs_gin: {
-        title: "Search: GiST vs GIN (stored tsvector)",
-        description: "body contains “bench”; same @@ query, slot A fts_gist vs slot B fts_gin (planner may pick different indexes).",
+        title: "Full text: GiST vs GIN on the same vector",
+        description:
+          "Identical tsvector predicate. Two planner tags so you can watch PostgreSQL pick GiST or GIN on the same column for the same @@ condition.",
       },
     },
     runningSlot: "Running",
@@ -202,6 +211,7 @@ function parseStrategyHead(strategy: string): { entityId: string; approach: stri
 
 /** Short label for the results table (tooltip shows full strategy string). */
 export function formatRunSetupShort(strategy: string): string {
+  if (typeof strategy !== "string") return String(strategy);
   const parsed = parseStrategyHead(strategy);
   if (!parsed) return strategy;
   const engine = workbenchUi.copy.approaches[parsed.approach as BenchApproach] ?? parsed.approach;
@@ -210,6 +220,7 @@ export function formatRunSetupShort(strategy: string): string {
 }
 
 function formatRunSetupLong(strategy: string): string {
+  if (typeof strategy !== "string") return String(strategy);
   const parsed = parseStrategyHead(strategy);
   if (!parsed) return strategy;
   const engine = parsed.approach === "typeorm" ? "TypeORM" : parsed.approach === "raw_sql" ? "raw SQL" : parsed.approach;
@@ -242,46 +253,83 @@ export function sortResultRowsForDisplay(slotResults: (SlotApiResult | null)[]):
   return rows;
 }
 
+/** One fragment in a summary paragraph (plain, bold key figures, or muted strategy text). */
+export type NarrativeSegment = { text: string; variant?: "strong" | "muted" };
+
+/** A paragraph rendered as one `<p>` with mixed emphasis. */
+export type NarrativeParagraph = NarrativeSegment[];
+
+function s(text: string, variant?: "strong" | "muted"): NarrativeSegment {
+  const safe = typeof text === "string" ? text : String(text);
+  return variant ? { text: safe, variant } : { text: safe };
+}
+
 /** Plain-language bullets for under the results table. */
-export function buildResultsNarrative(rows: SortedResultRow[], datasetLabel?: string): string[] {
-  const lines: string[] = [];
-  const lead = datasetLabel ? `For ${datasetLabel}, ` : "";
+export function buildResultsNarrative(rows: SortedResultRow[], datasetLabel?: string): NarrativeParagraph[] {
+  const paragraphs: NarrativeParagraph[] = [];
 
   const timedOk = rows.filter((r) => r.result.error == null && r.result.executionTimeMs != null);
   const failed = rows.filter((r) => r.result.error != null);
 
   if (timedOk.length > 0) {
     const fastest = timedOk[0]!;
-    lines.push(
-      `${lead}the fastest successful run was slot ${fastest.slotIndex + 1} (${fastest.result.executionTimeMs!.toFixed(2)} ms): ${formatRunSetupLong(fastest.result.strategy)}.`
-    );
+    const slotFast = fastest.slotIndex + 1;
+    const msFast = fastest.result.executionTimeMs!.toFixed(2);
+    const open = datasetLabel
+      ? s(`For ${datasetLabel}, the fastest successful run was `, "strong")
+      : s("The fastest successful run was ", "strong");
+    paragraphs.push([
+      open,
+      s(`slot ${slotFast} (${msFast} ms)`, "strong"),
+      s(": "),
+      s(formatRunSetupLong(fastest.result.strategy), "muted"),
+      s("."),
+    ]);
     if (timedOk.length > 1) {
       const slowest = timedOk[timedOk.length - 1]!;
       if (slowest.slotIndex !== fastest.slotIndex) {
         const mult = slowest.result.executionTimeMs! / fastest.result.executionTimeMs!;
-        lines.push(
-          `The slowest successful run was slot ${slowest.slotIndex + 1} (${slowest.result.executionTimeMs!.toFixed(2)} ms): ${formatRunSetupLong(slowest.result.strategy)}, about ${mult.toFixed(1)}× slower than the fastest.`
-        );
+        const slotSlow = slowest.slotIndex + 1;
+        const msSlow = slowest.result.executionTimeMs!.toFixed(2);
+        paragraphs.push([
+          s("The slowest successful run was ", "strong"),
+          s(`slot ${slotSlow} (${msSlow} ms)`, "strong"),
+          s(": "),
+          s(formatRunSetupLong(slowest.result.strategy), "muted"),
+          s(", "),
+          s(`about ${mult.toFixed(1)}× slower than the fastest.`, "strong"),
+        ]);
       }
     }
   } else {
-    lines.push(`${lead}no run finished without an error, so there is no timing comparison to highlight.`);
+    paragraphs.push([
+      ...(datasetLabel ? [s(`For ${datasetLabel}, `)] : []),
+      s("No run finished without an error", "strong"),
+      s(", so there is no timing comparison to highlight."),
+    ]);
   }
 
   for (const r of failed) {
-    lines.push(`Slot ${r.slotIndex + 1} failed: ${r.result.error}`);
+    const err =
+      typeof r.result.error === "string" || r.result.error == null
+        ? (r.result.error ?? "")
+        : String(r.result.error);
+    paragraphs.push([s(`Slot ${r.slotIndex + 1} failed: `, "strong"), s(err, "muted")]);
   }
 
   const counts = [...new Set(rows.map((r) => r.result.rowCount))];
   if (counts.length === 1) {
-    lines.push(`Every run returned ${counts[0]!} row(s).`);
+    paragraphs.push([s("Every run returned ", "strong"), s(`${counts[0]!} row(s)`, "strong"), s(".")]);
   } else {
-    lines.push(
-      "Row counts differed between slots. If you did not intend that, treat timing gaps cautiously—the queries may not be returning the same data."
-    );
+    paragraphs.push([
+      s("Row counts differed between slots.", "strong"),
+      s(
+        " If you did not intend that, treat timing gaps cautiously: the queries may not be returning the same data."
+      ),
+    ]);
   }
 
-  return lines;
+  return paragraphs;
 }
 
 export function renderSummaryCell(
@@ -298,7 +346,10 @@ export function renderSummaryCell(
     case "slot":
       return { text: String(displaySlotNumber) };
     case "strategy":
-      return { text: formatRunSetupShort(result.strategy), wrapCode: false };
+      return {
+        text: formatRunSetupShort(typeof result.strategy === "string" ? result.strategy : String(result.strategy)),
+        wrapCode: false,
+      };
     case "timeMs": {
       const ms = result.executionTimeMs;
       const isBest = ms != null && bestMs != null && ms === bestMs && result.error == null;
@@ -311,11 +362,16 @@ export function renderSummaryCell(
       return { text: String(result.payloadSizeBytes) };
     case "rows":
       return { text: String(result.rowCount) };
-    case "error":
+    case "error": {
+      const errText =
+        typeof result.error === "string" || result.error == null
+          ? (result.error ?? empty)
+          : String(result.error);
       return {
-        text: result.error ?? empty,
+        text: errText,
         className: result.error ? "err" : undefined,
       };
+    }
     default:
       return { text: empty };
   }

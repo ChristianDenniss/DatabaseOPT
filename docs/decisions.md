@@ -72,7 +72,7 @@ Short log of non-obvious choices. Add new entries at the top with today’s date
 
 **Bench integration:** Global optimizations **`fts_runtime`** (runtime `to_tsvector` on the filtered string column for **`contains`**), **`fts_gin`** / **`fts_gist`** (stored `search_vector` with planner-eligible GIN or GiST), and **`fts_stored_scan`** (same `search_vector @@ plainto_tsquery` SQL as GIN/GiST on **`posts.body`**, **`comments.body`**, and **`users.bio`**, **raw SQL only**, wrapped so index/bitmap scans are discouraged to approximate “stored vector without leaning on the FTS indexes”). **`fts_gin`**, **`fts_gist`**, and **`fts_stored_scan`** use the stored column only where `ftsGinUsesStoredSearchVector` in `bench.catalog.ts` applies; other string columns still use runtime `to_tsvector` when **`fts_gin`** / **`fts_gist`** / **`fts_runtime`** is selected, else baseline **`ILIKE`**.
 
-**Why these tables:** They hold the **long free-text** fields the workbench can meaningfully compare (substring vs tokenized FTS). **`user_follows`**, **`post_likes`**, and similar tables are mostly foreign keys and timestamps—no natural text column to index, so GIN there would not support the bench’s text search story.
+**Why these tables:** They hold the **long free-text** fields the workbench can meaningfully compare (substring vs tokenized FTS). **`user_follows`**, **`post_likes`**, and similar tables are mostly foreign keys and timestamps, with no natural text column to index, so GIN there would not support the bench’s text search story.
 
 **DDL path:** `backend/docker/postgres-init/01-schema.sql` for fresh installs; incremental migrations `1740600000000-PostCommentSearchVector` and `1740700000000-UserSearchVector` for existing databases.
 
@@ -114,7 +114,7 @@ Short log of non-obvious choices. Add new entries at the top with today’s date
 
 **Decision:** Use Docker Compose at the repo root to run PostgreSQL 16 for development. SQL init scripts and anything else container-specific live under `backend/docker/`.
 
-**Why:** Docker is worth using for this project—not because it makes your code faster, but because it makes your environment **consistent and reproducible**, which matters a lot when you are working on database performance. Everyone gets the same engine version and initialization path; benchmarks and `EXPLAIN` output stay comparable across machines and over time.
+**Why:** Docker is worth using for this project, not because it makes your code faster, but because it makes your environment **consistent and reproducible**, which matters a lot when you are working on database performance. Everyone gets the same engine version and initialization path; benchmarks and `EXPLAIN` output stay comparable across machines and over time.
 
 **Alternatives considered:** Install PostgreSQL directly on the host (faster to start sometimes, but version and config drift); cloud-only DB (good for demos, heavier for day-to-day iteration).
 

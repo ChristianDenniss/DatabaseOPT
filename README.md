@@ -44,14 +44,14 @@ The API is **TypeScript** with **TypeORM** (PostgreSQL driver). Schema is applie
 
 ## Run
 
-Terminal A — API (default `http://localhost:4000`):
+Terminal A: API (default `http://localhost:4000`):
 
 ```bash
 cd backend
 npm run dev
 ```
 
-Terminal B — UI (`http://localhost:5173`, proxies `/api` to the API):
+Terminal B: UI (`http://localhost:5173`, proxies `/api` to the API):
 
 ```bash
 cd frontend
@@ -60,10 +60,10 @@ npm run dev
 
 ## API
 
-- `GET /api/health` — DB connectivity
-- `GET /api/bench/catalog` — entities, columns, filter operators, optimization ids for the query workbench
-- `GET /api/bench/column-samples` — optional sample values for filter UX
-- `POST /api/bench/execute-slot` — run one compiled query variant (body: filters, entity, approach `typeorm` | `raw_sql`, optimizations, etc.)
+- `GET /api/health`: DB connectivity
+- `GET /api/bench/catalog`: entities, columns, filter operators, optimization ids for the query workbench
+- `GET /api/bench/column-samples`: optional sample values for filter UX
+- `POST /api/bench/execute-slot`: run one compiled query variant (body: filters, entity, approach `typeorm` | `raw_sql`, optimizations, etc.)
 
 CRUD routes live under `/api/users`, `/api/posts`, `/api/comments`, `/api/likes`, `/api/follows`, `/api/auth`. See [`docs/decisions.md`](docs/decisions.md) for auth and Redis caching behavior.
 
