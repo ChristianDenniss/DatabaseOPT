@@ -11,8 +11,10 @@ import type {
 } from "./types";
 import {
   approachLabel,
+  buildResultsNarrative,
   filterOpLabel,
   renderSummaryCell,
+  sortResultRowsForDisplay,
   workbenchUi,
 } from "./workbench.ui";
 import { useColumnSamples } from "./useColumnSamples";
@@ -37,14 +39,48 @@ function defaultSelectColumns(e: CatalogEntity): string[] {
   return e.columns.map((c) => c.id);
 }
 
+const FTS_OPTIMIZATION_IDS = new Set<string>(["fts_tsvector", "fts_gin"]);
+
 function optimizationsForApproach(catalog: WorkbenchCatalog | null, approach: BenchApproach | null) {
   if (!catalog || !approach) return [];
   return catalog.optimizations.filter((o) => o.approaches.includes(approach));
 }
 
-function boxIsComplete(catalog: WorkbenchCatalog | null, box: ComparisonBox): boolean {
-  if (!catalog || box.approach === null) return false;
-  const allowed = new Set(optimizationsForApproach(catalog, box.approach).map((o) => o.id));
+/** FTS toggles only affect SQL for literal string `contains`; hide them otherwise. */
+function queryHasLiteralStringContains(
+  catalog: WorkbenchCatalog,
+  entity: CatalogEntity,
+  conditions: FilterConditionRow[]
+): boolean {
+  return conditions.some((row) => {
+    if (row.op !== "contains" || row.valueMode !== "literal") return false;
+    const col = entity.columns.find((c) => c.id === row.column);
+    if (!col || col.kind !== "string") return false;
+    return conditionRowComplete(catalog, entity, row);
+  });
+}
+
+function optimizationsForSlot(
+  catalog: WorkbenchCatalog | null,
+  approach: BenchApproach | null,
+  entity: CatalogEntity | null,
+  conditions: FilterConditionRow[]
+) {
+  const base = optimizationsForApproach(catalog, approach);
+  if (!catalog || !entity || !queryHasLiteralStringContains(catalog, entity, conditions)) {
+    return base.filter((o) => !FTS_OPTIMIZATION_IDS.has(o.id));
+  }
+  return base;
+}
+
+function boxIsComplete(
+  catalog: WorkbenchCatalog | null,
+  box: ComparisonBox,
+  entity: CatalogEntity | null,
+  conditions: FilterConditionRow[]
+): boolean {
+  if (!catalog || box.approach === null || !entity) return false;
+  const allowed = new Set(optimizationsForSlot(catalog, box.approach, entity, conditions).map((o) => o.id));
   if (box.optimizationIds.length === 0) return false;
   return box.optimizationIds.every((id) => allowed.has(id));
 }
@@ -55,10 +91,25 @@ function opsForColumn(catalog: WorkbenchCatalog, col: CatalogColumn | undefined)
 }
 
 function literalOk(col: CatalogColumn, op: FilterOp, value: string): boolean {
-  if (op === "in") return value.trim().length > 0;
+  const t = value.trim();
+  if (op === "in") {
+    if (t.length === 0) return false;
+    const parts = t
+      .split(",")
+      .map((x) => x.trim())
+      .filter(Boolean);
+    if (parts.length === 0) return false;
+    if (col.kind === "bigint") return parts.every((p) => /^\d+$/.test(p));
+    if (col.kind === "number") return parts.every((p) => Number.isFinite(Number(p)));
+    if (col.kind === "timestamp") return parts.every((p) => !Number.isNaN(new Date(p).getTime()));
+    return true;
+  }
   if (col.kind === "string" && (op === "eq" || op === "neq")) return true;
-  if (op === "contains" || op === "starts_with") return value.trim().length > 0;
-  return value.trim().length > 0;
+  if (op === "contains" || op === "starts_with") return t.length > 0;
+  if (col.kind === "bigint") return /^\d+$/.test(t);
+  if (col.kind === "number") return t.length > 0 && Number.isFinite(Number(t));
+  if (col.kind === "timestamp") return t.length > 0 && !Number.isNaN(new Date(t).getTime());
+  return t.length > 0;
 }
 
 function conditionRowComplete(catalog: WorkbenchCatalog, entity: CatalogEntity, row: FilterConditionRow): boolean {
@@ -74,6 +125,15 @@ function conditionRowComplete(catalog: WorkbenchCatalog, entity: CatalogEntity, 
   return literalOk(col, row.op, row.value);
 }
 
+/** Empty string = no row limit; otherwise integer 1–500. */
+function parseRowLimit(limitStr: string): { ok: true; limit: number | null } | { ok: false } {
+  const t = limitStr.trim();
+  if (t === "") return { ok: true, limit: null };
+  const n = Math.floor(Number(t));
+  if (!Number.isFinite(n) || n < 1 || n > 500) return { ok: false };
+  return { ok: true, limit: n };
+}
+
 function queryPlanComplete(
   catalog: WorkbenchCatalog | null,
   entity: CatalogEntity | null,
@@ -83,8 +143,7 @@ function queryPlanComplete(
 ): boolean {
   if (!catalog || !entity) return false;
   if (selectColumns.length === 0) return false;
-  const lim = Number(limitStr);
-  if (!Number.isFinite(lim) || lim < 1 || lim > 500) return false;
+  if (!parseRowLimit(limitStr).ok) return false;
   for (const id of selectColumns) {
     if (!entity.columns.some((c) => c.id === id)) return false;
   }
@@ -205,7 +264,7 @@ export function BenchmarkWorkbench() {
   const [combinator, setCombinator] = useState<"and" | "or">("and");
   const [conditions, setConditions] = useState<FilterConditionRow[]>([]);
   const [selectColumns, setSelectColumns] = useState<string[]>([]);
-  const [limitStr, setLimitStr] = useState("50");
+  const [limitStr, setLimitStr] = useState("");
   const [orderColumn, setOrderColumn] = useState<string>("");
   const [orderDir, setOrderDir] = useState<"ASC" | "DESC">("DESC");
 
@@ -243,7 +302,7 @@ export function BenchmarkWorkbench() {
     setOrderDir(
       ["posts", "comments", "post_likes", "user_follows"].includes(entity.id) ? "DESC" : "ASC"
     );
-    setLimitStr("50");
+    setLimitStr("");
     setBoxes(emptyBoxes(workbenchUi.limits.defaultSlots));
     setSlotResults([]);
     setPhase("idle");
@@ -254,7 +313,7 @@ export function BenchmarkWorkbench() {
     if (!catalog || !entity || boxes.length < workbenchUi.limits.minSlots || phase === "running")
       return false;
     if (!queryPlanComplete(catalog, entity, conditions, selectColumns, limitStr)) return false;
-    return boxes.every((b) => boxIsComplete(catalog, b));
+    return boxes.every((b) => boxIsComplete(catalog, b, entity, conditions));
   }, [catalog, entity, boxes, conditions, selectColumns, limitStr, phase]);
 
   const addCondition = useCallback(() => {
@@ -287,6 +346,8 @@ export function BenchmarkWorkbench() {
           const col = entity.columns.find((c) => c.id === patch.column);
           const o = catalog && col ? opsForColumn(catalog, col) : [];
           if (!o.includes(next.op)) next.op = o[0] ?? "eq";
+          next.value = "";
+          next.refColumn = "";
         }
         return next;
       })
@@ -321,14 +382,33 @@ export function BenchmarkWorkbench() {
         prev.map((b) => {
           if (b.id !== boxId) return b;
           const allowed = new Set(
-            (catalog?.optimizations ?? []).filter((o) => o.approaches.includes(approach)).map((o) => o.id)
+            optimizationsForSlot(catalog, approach, entity, conditions).map((o) => o.id)
           );
           return { ...b, approach, optimizationIds: b.optimizationIds.filter((x) => allowed.has(x)) };
         })
       );
     },
-    [catalog?.optimizations]
+    [catalog, entity, conditions]
   );
+
+  /** Drop FTS optimization ids when the query no longer has a literal string `contains`. */
+  useEffect(() => {
+    if (!catalog || !entity) return;
+    setBoxes((prev) => {
+      let changed = false;
+      const next = prev.map((box) => {
+        if (box.approach === null) return box;
+        const allowed = new Set(optimizationsForSlot(catalog, box.approach, entity, conditions).map((o) => o.id));
+        const filtered = box.optimizationIds.filter((id) => allowed.has(id));
+        if (filtered.length !== box.optimizationIds.length) {
+          changed = true;
+          return { ...box, optimizationIds: filtered };
+        }
+        return box;
+      });
+      return changed ? next : prev;
+    });
+  }, [catalog, entity, conditions]);
 
   const toggleOptimization = useCallback((boxId: string, optId: string, checked: boolean) => {
     setBoxes((prev) =>
@@ -345,7 +425,8 @@ export function BenchmarkWorkbench() {
   const buildExecutePayload = useCallback(
     (box: ComparisonBox) => {
       if (!entity || !box.approach) return null;
-      const lim = Math.min(500, Math.max(1, Math.floor(Number(limitStr))));
+      const lp = parseRowLimit(limitStr);
+      if (!lp.ok) return null;
       const payload: Record<string, unknown> = {
         entityId: entity.id,
         combinator,
@@ -357,10 +438,12 @@ export function BenchmarkWorkbench() {
           refColumn: c.valueMode === "column_ref" ? c.refColumn : undefined,
         })),
         selectColumns,
-        limit: lim,
         approach: box.approach,
         optimizationIds: box.optimizationIds,
       };
+      if (lp.limit != null) {
+        payload.limit = lp.limit;
+      }
       if (orderColumn.trim()) {
         payload.orderBy = { column: orderColumn.trim(), direction: orderDir };
       }
@@ -410,11 +493,20 @@ export function BenchmarkWorkbench() {
     return Math.min(...times);
   }, [slotResults]);
 
+  const sortedResultRows = useMemo(
+    () => (phase === "done" ? sortResultRowsForDisplay(slotResults) : null),
+    [phase, slotResults]
+  );
+
+  const resultsNarrative = useMemo(() => {
+    if (!sortedResultRows) return [];
+    return buildResultsNarrative(sortedResultRows, entity?.label);
+  }, [sortedResultRows, entity?.label]);
+
   const queryHint = useMemo(() => {
     if (!catalog || !entity) return null;
     if (selectColumns.length === 0) return workbenchUi.copy.hints.selectColumn;
-    const lim = Number(limitStr);
-    if (!Number.isFinite(lim) || lim < 1 || lim > 500) return workbenchUi.copy.hints.limitRange;
+    if (!parseRowLimit(limitStr).ok) return workbenchUi.copy.hints.limitRange;
     for (const row of conditions) {
       if (!conditionRowComplete(catalog, entity, row)) return workbenchUi.copy.hints.filterIncomplete;
     }
@@ -484,7 +576,6 @@ export function BenchmarkWorkbench() {
                         name="combinator"
                         checked={combinator === "and"}
                         onChange={() => setCombinator("and")}
-                        disabled={conditions.length === 0}
                       />
                       {workbenchUi.copy.combineAnd}
                     </label>
@@ -494,7 +585,6 @@ export function BenchmarkWorkbench() {
                         name="combinator"
                         checked={combinator === "or"}
                         onChange={() => setCombinator("or")}
-                        disabled={conditions.length === 0}
                       />
                       {workbenchUi.copy.combineOr}
                     </label>
@@ -528,11 +618,21 @@ export function BenchmarkWorkbench() {
                     <input
                       id="wb-limit"
                       className="wb-input"
-                      type="number"
-                      min={1}
-                      max={500}
+                      type="text"
+                      inputMode="numeric"
+                      placeholder={workbenchUi.copy.rowLimitPlaceholder}
+                      autoComplete="off"
                       value={limitStr}
-                      onChange={(e) => setLimitStr(e.target.value)}
+                      onChange={(e) => {
+                        const raw = e.target.value.replace(/\D/g, "");
+                        if (raw === "") {
+                          setLimitStr("");
+                          return;
+                        }
+                        const n = Number(raw);
+                        if (n > 500) return;
+                        setLimitStr(raw);
+                      }}
                     />
                   </div>
                   <div className="field">
@@ -577,6 +677,9 @@ export function BenchmarkWorkbench() {
           <div className="workbench-slots">
             <div className="slots-header">
               <h3>5. {workbenchUi.copy.stepSlots}</h3>
+            </div>
+            <p className="workbench-hint">{workbenchUi.copy.slotsHint}</p>
+            <div className="slots-add">
               <button
                 type="button"
                 className="btn-secondary"
@@ -586,15 +689,15 @@ export function BenchmarkWorkbench() {
                 + {workbenchUi.copy.addSlot}
               </button>
             </div>
-            <p className="workbench-hint">{workbenchUi.copy.slotsHint}</p>
-            {boxes.length === 0 && (
-              <p className="muted small slots-empty">{workbenchUi.copy.slotsEmpty}</p>
-            )}
-
             <div className="slots-list">
               {boxes.map((box, index) => {
-                const opts = optimizationsForApproach(catalog, box.approach);
-                const complete = boxIsComplete(catalog, box);
+                const opts = optimizationsForSlot(catalog, box.approach, entity, conditions);
+                const complete = boxIsComplete(catalog, box, entity, conditions);
+                const ftsHidden =
+                  !!catalog &&
+                  !!entity &&
+                  box.approach != null &&
+                  !queryHasLiteralStringContains(catalog, entity, conditions);
                 return (
                   <article key={box.id} className={`comparison-slot ${complete ? "complete" : "incomplete"}`}>
                     <div className="slot-head">
@@ -633,20 +736,25 @@ export function BenchmarkWorkbench() {
                       {!box.approach ? (
                         <p className="muted small">{workbenchUi.copy.pickEngineFirst}</p>
                       ) : (
-                        <ul className="opt-list">
-                          {opts.map((o) => (
-                            <li key={o.id}>
-                              <label className="check-row">
-                                <input
-                                  type="checkbox"
-                                  checked={box.optimizationIds.includes(o.id)}
-                                  onChange={(e) => toggleOptimization(box.id, o.id, e.target.checked)}
-                                />
-                                {o.label}
-                              </label>
-                            </li>
-                          ))}
-                        </ul>
+                        <>
+                          <ul className="opt-list">
+                            {opts.map((o) => (
+                              <li key={o.id}>
+                                <label className="check-row">
+                                  <input
+                                    type="checkbox"
+                                    checked={box.optimizationIds.includes(o.id)}
+                                    onChange={(e) => toggleOptimization(box.id, o.id, e.target.checked)}
+                                  />
+                                  {o.label}
+                                </label>
+                              </li>
+                            ))}
+                          </ul>
+                          {ftsHidden && (
+                            <p className="muted small">{workbenchUi.copy.ftsOptionsHint}</p>
+                          )}
+                        </>
                       )}
                     </div>
 
@@ -686,9 +794,9 @@ export function BenchmarkWorkbench() {
         </p>
       )}
 
-      {phase === "done" && slotResults.every(Boolean) && (
-        <div className="summary-panel">
-          <h3>{workbenchUi.copy.summaryTitle}</h3>
+      {phase === "done" && sortedResultRows && (
+        <div className="results-panel">
+          <h3>{workbenchUi.copy.resultsTitle}</h3>
           <table className="summary-table">
             <thead>
               <tr>
@@ -698,27 +806,38 @@ export function BenchmarkWorkbench() {
               </tr>
             </thead>
             <tbody>
-              {slotResults.map((r, i) =>
-                r ? (
-                  <tr key={i}>
-                    {workbenchUi.summaryColumns.map((col) => {
-                      const cell = renderSummaryCell(col.id, {
-                        index: i,
-                        result: r,
-                        bestMs,
-                        empty: workbenchUi.copy.emptyCell,
-                      });
-                      return (
-                        <td key={col.id} className={cell.className}>
-                          {cell.wrapCode ? <code>{cell.text}</code> : cell.text}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ) : null
-              )}
+              {sortedResultRows.map((row) => (
+                <tr key={row.slotIndex}>
+                  {workbenchUi.summaryColumns.map((col) => {
+                    const cell = renderSummaryCell(col.id, {
+                      displaySlotNumber: row.slotIndex + 1,
+                      result: row.result,
+                      bestMs,
+                      empty: workbenchUi.copy.emptyCell,
+                    });
+                    return (
+                      <td
+                        key={col.id}
+                        className={cell.className}
+                        title={col.id === "strategy" ? row.result.strategy : undefined}
+                      >
+                        {cell.wrapCode ? <code>{cell.text}</code> : cell.text}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
             </tbody>
           </table>
+
+          {resultsNarrative.length > 0 && (
+            <div className="results-narrative">
+              <h4>{workbenchUi.copy.summaryNarrativeTitle}</h4>
+              {resultsNarrative.map((paragraph, i) => (
+                <p key={i}>{paragraph}</p>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </section>

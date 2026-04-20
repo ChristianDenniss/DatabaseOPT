@@ -25,7 +25,8 @@ function strategyName(body: ExecuteSlotBody): string {
     ? `conds=${body.conditions.length}:${body.combinator}`
     : "conds=0";
   const cols = [...body.selectColumns].sort().join("+");
-  return `${body.entityId}:${body.approach}:${tag}|${condTag}|sel=${cols}|lim=${body.limit}`;
+  const limTag = body.limit != null ? String(body.limit) : "all";
+  return `${body.entityId}:${body.approach}:${tag}|${condTag}|sel=${cols}|lim=${limTag}`;
 }
 
 function buildStrategy(body: ExecuteSlotBody): { error: string } | { strategy: BenchmarkStrategy<unknown> } {

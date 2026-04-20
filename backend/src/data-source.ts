@@ -2,6 +2,8 @@ import dns from "node:dns";
 import dotenv from "dotenv";
 import { DataSource } from "typeorm";
 import { InitialSchema1740000000000 } from "./migrations/1740000000000-InitialSchema.js";
+import { PostCommentSearchVector1740600000000 } from "./migrations/1740600000000-PostCommentSearchVector.js";
+import { UserSearchVector1740700000000 } from "./migrations/1740700000000-UserSearchVector.js";
 import { Comment } from "./modules/comment/comment.entity.js";
 import { UserFollow } from "./modules/follow/user-follow.entity.js";
 import { PostLike } from "./modules/likes/post-like.entity.js";
@@ -48,7 +50,7 @@ export const AppDataSource = new DataSource({
   synchronize: false,
   logging: process.env.TYPEORM_LOGGING === "1",
   entities: [User, UserFollow, Post, PostLike, Comment],
-  migrations: [InitialSchema1740000000000],
+  migrations: [InitialSchema1740000000000, PostCommentSearchVector1740600000000, UserSearchVector1740700000000],
   migrationsTableName: "typeorm_migrations",
   extra: {
     max: 10,

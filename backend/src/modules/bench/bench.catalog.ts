@@ -217,7 +217,24 @@ export const BENCH_GLOBAL_OPTIMIZATIONS: {
     label: "Default execution path",
     approaches: ["typeorm", "raw_sql"],
   },
+  {
+    id: "fts_tsvector",
+    label: "FTS (to_tsvector at query time)",
+    approaches: ["typeorm", "raw_sql"],
+  },
+  {
+    id: "fts_gin",
+    label: "FTS (GIN on stored tsvector)",
+    approaches: ["typeorm", "raw_sql"],
+  },
 ];
+
+const FTS_GIN_STORED_KEYS = new Set<string>(["posts:body", "comments:body", "users:bio"]);
+
+/** True when `fts_gin` + contains on this column should use the stored `search_vector` + GIN. */
+export function ftsGinUsesStoredSearchVector(entityId: BenchEntity["id"], columnId: string): boolean {
+  return FTS_GIN_STORED_KEYS.has(`${entityId}:${columnId}`);
+}
 
 export function getBenchEntity(id: string): BenchEntity | undefined {
   return BENCH_ENTITIES.find((e) => e.id === id);

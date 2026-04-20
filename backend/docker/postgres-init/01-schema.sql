@@ -10,6 +10,7 @@ CREATE TABLE users (
   email VARCHAR(255) NOT NULL,
   display_name VARCHAR(100) NOT NULL,
   bio TEXT,
+  search_vector tsvector GENERATED ALWAYS AS (to_tsvector('english', coalesce(bio, ''))) STORED,
   avatar_url VARCHAR(512),
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -18,6 +19,7 @@ CREATE TABLE users (
 CREATE UNIQUE INDEX uq_users_username ON users (username);
 CREATE UNIQUE INDEX uq_users_email ON users (email);
 CREATE INDEX idx_users_created_at ON users (created_at);
+CREATE INDEX idx_users_search_vector ON users USING gin (search_vector);
 
 CREATE TABLE user_follows (
   follower_id BIGINT NOT NULL REFERENCES users (id) ON DELETE CASCADE,
@@ -33,6 +35,7 @@ CREATE TABLE posts (
   id BIGSERIAL PRIMARY KEY,
   author_id BIGINT NOT NULL REFERENCES users (id) ON DELETE CASCADE,
   body TEXT NOT NULL,
+  search_vector tsvector GENERATED ALWAYS AS (to_tsvector('english', coalesce(body, ''))) STORED,
   repost_of_post_id BIGINT REFERENCES posts (id) ON DELETE SET NULL,
   visibility post_visibility NOT NULL DEFAULT 'public',
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -42,6 +45,7 @@ CREATE TABLE posts (
 CREATE INDEX idx_posts_author_created ON posts (author_id, created_at DESC);
 CREATE INDEX idx_posts_created_at ON posts (created_at);
 CREATE INDEX idx_posts_repost ON posts (repost_of_post_id);
+CREATE INDEX idx_posts_search_vector ON posts USING gin (search_vector);
 
 CREATE TABLE comments (
   id BIGSERIAL PRIMARY KEY,
@@ -49,10 +53,12 @@ CREATE TABLE comments (
   author_id BIGINT NOT NULL REFERENCES users (id) ON DELETE CASCADE,
   parent_comment_id BIGINT REFERENCES comments (id) ON DELETE CASCADE,
   body TEXT NOT NULL,
+  search_vector tsvector GENERATED ALWAYS AS (to_tsvector('english', coalesce(body, ''))) STORED,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX idx_comments_post_created ON comments (post_id, created_at);
+CREATE INDEX idx_comments_search_vector ON comments USING gin (search_vector);
 CREATE INDEX idx_comments_author ON comments (author_id);
 CREATE INDEX idx_comments_parent ON comments (parent_comment_id);
 

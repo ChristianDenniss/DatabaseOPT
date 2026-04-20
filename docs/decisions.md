@@ -4,6 +4,20 @@ Short log of non-obvious choices. Add new entries at the top with today’s date
 
 ---
 
+## FTS: stored `tsvector` + GIN on posts, comments, users (2026-04-19)
+
+**Decision:** Add a **`search_vector`** column on **`posts`**, **`comments`**, and **`users`**, each **`GENERATED ALWAYS`** from `to_tsvector('english', coalesce(<text>, ''))` **STORED**, plus a **GIN** index on `search_vector`. Post and comment vectors are built from **`body`**; the user vector is built from **`bio`** only.
+
+**Bench integration:** Global optimizations **`fts_tsvector`** (runtime `to_tsvector` on the filtered column) and **`fts_gin`** (use the stored column when applicable). The compiler maps **`fts_gin` + `contains`** to `search_vector @@ plainto_tsquery('english', …)` only for **`posts.body`**, **`comments.body`**, and **`users.bio`** via `ftsGinUsesStoredSearchVector` in `bench.catalog.ts`; other string columns still use runtime `to_tsvector` when an FTS option is selected, else baseline **`ILIKE`**.
+
+**Why these tables:** They hold the **long free-text** fields the workbench can meaningfully compare (substring vs tokenized FTS). **`user_follows`**, **`post_likes`**, and similar tables are mostly foreign keys and timestamps—no natural text column to index, so GIN there would not support the bench’s text search story.
+
+**DDL path:** `backend/docker/postgres-init/01-schema.sql` for fresh installs; incremental migrations `1740600000000-PostCommentSearchVector` and `1740700000000-UserSearchVector` for existing databases.
+
+**Caveat:** `plainto_tsquery` is **not** semantically identical to `ILIKE '%…%'`; the options exist to compare execution strategies, not to claim byte-for-byte result parity.
+
+---
+
 ## Postgres connection: `PG_*` only + DNS (2026-04-19)
 
 **Decision:** Configure the API and seed script with discrete **`PG_*`** variables only (no `DATABASE_URL` / connection-string aliases in app code). TLS follows `PG_SSL` and `PG_SSL_REJECT_UNAUTHORIZED` the same way for every host.

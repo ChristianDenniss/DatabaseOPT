@@ -412,15 +412,19 @@ details.explain pre {
 }
 
 .slots-header {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
+  margin-bottom: 0.35rem;
 }
 
-.slots-empty {
-  margin: 0.35rem 0 0.85rem;
+.slots-header h3 {
+  margin: 0;
+}
+
+.workbench-slots > .workbench-hint {
+  margin: 0 0 0.5rem;
+}
+
+.slots-add {
+  margin-bottom: 0.85rem;
 }
 
 /* Secondary copy under workbench section headings (full width of panel). */
@@ -502,7 +506,11 @@ details.explain pre {
   cursor: not-allowed;
 }
 
-.workbench input[type="radio"] {
+/*
+ * Custom radios use ::after on <input>, which is unreliable on replaced elements and can break clicks.
+ * Only style radios inside execution slots; combinator + filter value mode use native controls.
+ */
+.workbench .comparison-slot input[type="radio"] {
   -webkit-appearance: none;
   appearance: none;
   width: 1.125rem;
@@ -520,16 +528,16 @@ details.explain pre {
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
-.workbench input[type="radio"]:hover:not(:disabled) {
+.workbench .comparison-slot input[type="radio"]:hover:not(:disabled) {
   border-color: rgba(var(--accent-rgb), 0.55);
 }
 
-.workbench input[type="radio"]:checked {
+.workbench .comparison-slot input[type="radio"]:checked {
   border-color: var(--accent);
   background: var(--surface);
 }
 
-.workbench input[type="radio"]:checked::after {
+.workbench .comparison-slot input[type="radio"]:checked::after {
   content: "";
   position: absolute;
   left: 50%;
@@ -541,14 +549,28 @@ details.explain pre {
   background: var(--accent);
 }
 
-.workbench input[type="radio"]:focus-visible {
+.workbench .comparison-slot input[type="radio"]:focus-visible {
   outline: none;
   box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.28);
 }
 
-.workbench input[type="radio"]:disabled {
+.workbench .comparison-slot input[type="radio"]:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+/* Native radios: reliable hit targets in filter combinator & value mode */
+.workbench .combinator-row input[type="radio"],
+.workbench .value-mode input[type="radio"] {
+  width: 1.05rem;
+  height: 1.05rem;
+  min-width: 1.05rem;
+  margin: 0;
+  flex-shrink: 0;
+  align-self: center;
+  accent-color: rgb(var(--accent-rgb));
+  cursor: pointer;
+  vertical-align: middle;
 }
 
 .comparison-slot {
@@ -754,10 +776,33 @@ details.explain pre {
   font-size: 0.8125rem;
 }
 
-.summary-panel {
+.results-panel {
   margin-top: 1.5rem;
   padding-top: 1.25rem;
   border-top: 1px solid var(--border);
+}
+
+.results-narrative {
+  margin-top: 1.25rem;
+  max-width: 52rem;
+}
+
+.results-narrative h4 {
+  margin: 0 0 0.5rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.results-narrative p {
+  margin: 0 0 0.5rem;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.results-narrative p:last-child {
+  margin-bottom: 0;
 }
 
 .summary-table {
@@ -796,23 +841,35 @@ details.explain pre {
 }
 
 .column-picks {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem 1.25rem;
-  align-items: flex-start;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+  gap: 0.5rem 0.65rem;
   padding: 0.25rem 0;
 }
 
 .column-picks .check-row {
-  flex: 0 1 auto;
+  width: 100%;
   min-width: 0;
-  max-width: 100%;
-  padding: 0.35rem 0.65rem;
-  margin: -0.35rem -0.65rem;
+  max-width: none;
+  box-sizing: border-box;
+  padding: 0.45rem 0.65rem;
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+}
+
+.column-picks .check-row span {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .column-picks .check-row:hover {
   background: rgba(var(--accent-rgb), 0.08);
+  border-color: rgba(var(--accent-rgb), 0.25);
 }
 
 .inline-code {

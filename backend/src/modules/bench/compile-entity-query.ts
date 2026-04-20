@@ -10,6 +10,7 @@ import type { ExecuteSlotBody } from "./bench.schemas.js";
 import type { ConditionInput } from "./bench.schemas.js";
 import {
   FILTER_OPS_BY_KIND,
+  ftsGinUsesStoredSearchVector,
   type BenchEntity,
   type BenchEntityColumn,
   type FilterOp,
@@ -96,11 +97,27 @@ function pushParam(state: ParamState, value: unknown): string {
   return `$${state.params.length}`;
 }
 
+/** How to evaluate string `contains` when FTS optimizations are selected. */
+function ftsContainsMode(
+  entity: BenchEntity,
+  columnId: string,
+  colKind: BenchEntityColumn["kind"],
+  op: FilterOp,
+  optimizationIds: readonly string[]
+): "gin" | "runtime" | "none" {
+  if (op !== "contains" || colKind !== "string") return "none";
+  const ids = new Set(optimizationIds);
+  if (!ids.has("fts_tsvector") && !ids.has("fts_gin")) return "none";
+  if (ids.has("fts_gin") && ftsGinUsesStoredSearchVector(entity.id, columnId)) return "gin";
+  return "runtime";
+}
+
 function buildOneCondition(
   entity: BenchEntity,
   tableAlias: string,
   c: ConditionInput,
-  state: ParamState
+  state: ParamState,
+  optimizationIds: readonly string[]
 ): { ok: true; sql: string } | { ok: false; error: string } {
   const col = getColumn(entity, c.column);
   if (!col || !col.filterable) return { ok: false, error: `Unknown or non-filterable column: ${c.column}` };
@@ -144,22 +161,34 @@ function buildOneCondition(
   }
 
   const v = parsed.value;
-  const slot = pushParam(state, v);
 
   switch (c.op) {
     case "eq":
-      return { ok: true, sql: `${ta}.${qc} = ${slot}` };
+      return { ok: true, sql: `${ta}.${qc} = ${pushParam(state, v)}` };
     case "neq":
-      return { ok: true, sql: `${ta}.${qc} <> ${slot}` };
+      return { ok: true, sql: `${ta}.${qc} <> ${pushParam(state, v)}` };
     case "gt":
-      return { ok: true, sql: `${ta}.${qc} > ${slot}` };
+      return { ok: true, sql: `${ta}.${qc} > ${pushParam(state, v)}` };
     case "gte":
-      return { ok: true, sql: `${ta}.${qc} >= ${slot}` };
+      return { ok: true, sql: `${ta}.${qc} >= ${pushParam(state, v)}` };
     case "lt":
-      return { ok: true, sql: `${ta}.${qc} < ${slot}` };
+      return { ok: true, sql: `${ta}.${qc} < ${pushParam(state, v)}` };
     case "lte":
-      return { ok: true, sql: `${ta}.${qc} <= ${slot}` };
+      return { ok: true, sql: `${ta}.${qc} <= ${pushParam(state, v)}` };
     case "contains": {
+      const fts = ftsContainsMode(entity, col.id, col.kind, c.op, optimizationIds);
+      if (fts === "gin") {
+        return {
+          ok: true,
+          sql: `${ta}.${quoteIdent("search_vector")} @@ plainto_tsquery('english', ${pushParam(state, String(v))})`,
+        };
+      }
+      if (fts === "runtime") {
+        return {
+          ok: true,
+          sql: `to_tsvector('english', ${ta}.${qc}) @@ plainto_tsquery('english', ${pushParam(state, String(v))})`,
+        };
+      }
       const escaped = String(v).replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
       const s = pushParam(state, `%${escaped}%`);
       return { ok: true, sql: `${ta}.${qc} ILIKE ${s} ESCAPE '\\'` };
@@ -218,7 +247,7 @@ const typeormEntityClass = {
 export function compileEntityQuery(
   body: Pick<
     ExecuteSlotBody,
-    "entityId" | "combinator" | "conditions" | "selectColumns" | "limit" | "orderBy"
+    "entityId" | "combinator" | "conditions" | "selectColumns" | "limit" | "orderBy" | "optimizationIds"
   >
 ): { error: string } | { entity: BenchEntity; runRaw: (qr: QueryRunner) => Promise<unknown[]>; runTypeorm: (qr: QueryRunner) => Promise<unknown[]> } {
   const entity = getBenchEntity(body.entityId);
@@ -235,7 +264,7 @@ export function compileEntityQuery(
   const state = createParamState();
   const sqlParts: string[] = [];
   for (const c of body.conditions) {
-    const built = buildOneCondition(entity, tableAlias, c, state);
+    const built = buildOneCondition(entity, tableAlias, c, state, body.optimizationIds);
     if (!built.ok) return { error: built.error };
     sqlParts.push(`(${built.sql})`);
   }
@@ -251,10 +280,11 @@ export function compileEntityQuery(
       : `${tableAlias}.${quoteIdent(defOrder.column)} ${defOrder.direction}`;
 
   const fromSql = `${quoteIdent(entity.table)} AS ${tableAlias}`;
+  const limitSql = body.limit != null ? ` LIMIT ${body.limit}` : "";
   const sql =
     sqlParts.length === 0
-      ? `SELECT ${selectList} FROM ${fromSql} ORDER BY ${order} LIMIT ${body.limit}`
-      : `SELECT ${selectList} FROM ${fromSql} WHERE ${whereSql} ORDER BY ${order} LIMIT ${body.limit}`;
+      ? `SELECT ${selectList} FROM ${fromSql} ORDER BY ${order}${limitSql}`
+      : `SELECT ${selectList} FROM ${fromSql} WHERE ${whereSql} ORDER BY ${order}${limitSql}`;
 
   const selectIds = body.selectColumns;
 
@@ -282,7 +312,7 @@ export function compileEntityQuery(
     const fragments: { sql: string; params: Record<string, unknown> }[] = [];
     for (const c of body.conditions) {
       const st = createParamState();
-      const built = buildOneCondition(entity, alias, c, st);
+      const built = buildOneCondition(entity, alias, c, st, body.optimizationIds);
       if (!built.ok) throw new Error(built.error);
       const params: Record<string, unknown> = {};
       let sqlFrag = built.sql;
@@ -315,7 +345,9 @@ export function compileEntityQuery(
     const obProp = getColumn(entity, obCol)!.property;
     const obDir = body.orderBy?.direction ?? defOrder.direction;
     qb.orderBy(`${alias}.${obProp}`, obDir);
-    qb.take(body.limit);
+    if (body.limit != null) {
+      qb.take(body.limit);
+    }
 
     const rawRows = await qb.getRawMany();
     return rawRows.map((r) => mapRow(entity, { ...r } as Record<string, unknown>, selectIds));

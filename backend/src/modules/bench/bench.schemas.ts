@@ -27,7 +27,8 @@ export const executeSlotBodySchema = z.object({
   conditions: z.array(conditionSchema),
   /** Whitelisted column ids to return (subset of entity columns). */
   selectColumns: z.array(z.string().min(1)).min(1).max(32),
-  limit: z.number().int().min(1).max(500).optional().default(100),
+  /** Omit or leave unset for no row cap (all matching rows). */
+  limit: z.number().int().min(1).max(500).optional(),
   orderBy: z
     .object({
       column: z.string().min(1),
