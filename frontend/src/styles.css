@@ -15,6 +15,8 @@
   --success: #0a7d43;
   --radius: 10px;
   --radius-sm: 8px;
+  /* Sharp-ish panels vs rounded controls (workbench sections, slots, results). */
+  --radius-panel: 4px;
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
   font-family:
     -apple-system,
@@ -48,18 +50,21 @@ a:hover {
 }
 
 .app {
-  max-width: 980px;
+  max-width: 1040px;
   margin: 0 auto;
   padding: 2.5rem 1.25rem 3rem;
 }
 
 .site-header {
   margin-bottom: 2rem;
-  padding: 1.35rem 1.25rem 1.5rem;
-  background: linear-gradient(165deg, var(--surface) 0%, var(--surface-raised) 100%);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
+  margin-left: -0.25rem;
+  margin-right: -0.25rem;
+  padding: 0.35rem 0.25rem 1.35rem;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  border-bottom: 1px solid var(--border);
 }
 
 .site-header-top {
@@ -82,10 +87,10 @@ a:hover {
 
 .site-title {
   margin: 0 0 0.5rem;
-  font-size: 1.85rem;
+  font-size: 2rem;
   font-weight: 600;
-  letter-spacing: -0.03em;
-  line-height: 1.15;
+  letter-spacing: -0.04em;
+  line-height: 1.12;
   color: var(--text);
 }
 
@@ -166,7 +171,7 @@ a:hover {
   display: flex;
   justify-content: center;
   width: 100%;
-  max-width: 980px;
+  max-width: 1040px;
   margin: 0 auto;
   padding: 1rem 1.25rem 0.5rem;
   box-sizing: border-box;
@@ -1006,28 +1011,28 @@ details.explain pre {
 
 /* Workbench */
 .workbench {
-  margin-top: 2rem;
-  padding: 1.4rem;
-  background: linear-gradient(180deg, #ffffff 0%, #f6f8fb 100%);
-  border: 1px solid rgba(255, 255, 255, 0.92);
-  border-radius: 14px;
-  box-shadow:
-    0 18px 38px rgba(22, 32, 55, 0.09),
-    inset 0 1px 0 rgba(255, 255, 255, 0.88);
+  margin-top: 1.75rem;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .workbench h2 {
-  margin: 0 0 0.4rem;
-  font-size: 1.125rem;
+  margin: 0 0 0.45rem;
+  font-size: 1.3rem;
   font-weight: 600;
-  letter-spacing: -0.015em;
+  letter-spacing: -0.03em;
+  color: var(--text);
 }
 
 .workbench-intro {
-  margin: 0 0 1.35rem;
+  margin: 0 0 1.5rem;
+  max-width: 40rem;
   color: var(--text-secondary);
   font-size: 0.9375rem;
-  line-height: 1.5;
+  line-height: 1.55;
 }
 
 /* Recipes fill panel width; column count follows panel width (not viewport alone) */
@@ -1090,14 +1095,12 @@ details.explain pre {
 .workbench-task,
 .workbench-params,
 .workbench-slots {
-  margin-bottom: 1.5rem;
-  padding: 1rem;
-  border-radius: 12px;
-  border: 1px solid rgba(170, 178, 194, 0.2);
-  background: linear-gradient(180deg, #ffffff 0%, #f9fbff 100%);
-  box-shadow:
-    0 7px 18px rgba(16, 24, 40, 0.06),
-    inset 0 1px 0 rgba(255, 255, 255, 0.84);
+  margin-bottom: 1.65rem;
+  padding: 1.1rem 1rem 1.15rem;
+  border-radius: var(--radius-panel);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: none;
 }
 
 .workbench-params,
@@ -1172,9 +1175,10 @@ details.explain pre {
 }
 
 .workbench h3 {
-  margin: 0 0 0.45rem;
-  font-size: 0.9375rem;
+  margin: 0 0 0.55rem;
+  font-size: 1rem;
   font-weight: 600;
+  letter-spacing: -0.02em;
   color: var(--text);
 }
 
@@ -1188,27 +1192,23 @@ details.explain pre {
 
 .wb-select,
 .wb-input {
-  background: linear-gradient(180deg, #ffffff 0%, #f5f7fb 100%);
+  background: var(--surface);
   color: var(--text);
-  border: 1px solid rgba(124, 133, 149, 0.24);
-  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
   padding: 0.5rem 0.65rem;
   min-width: 0;
   width: auto;
   max-width: 100%;
   font-size: 0.875rem;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.9),
-    0 1px 2px rgba(16, 24, 40, 0.06);
+  box-shadow: none;
 }
 
 .wb-select:focus,
 .wb-input:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.88),
-    0 0 0 3px rgba(var(--accent-rgb), 0.16);
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.16);
 }
 
 .workbench-task .wb-select {
@@ -1406,25 +1406,21 @@ details.explain pre {
 }
 
 .comparison-slot {
-  border: 1px solid rgba(126, 136, 153, 0.22);
-  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel);
   padding: 1rem 1.1rem;
-  background: linear-gradient(180deg, #ffffff 0%, #f4f7fb 100%);
-  box-shadow:
-    0 8px 20px rgba(18, 26, 38, 0.07),
-    inset 0 1px 0 rgba(255, 255, 255, 0.88);
+  background: var(--surface-raised);
+  box-shadow: none;
 }
 
 .comparison-slot.complete {
-  border-color: rgba(10, 125, 67, 0.3);
-  box-shadow:
-    0 8px 20px rgba(18, 26, 38, 0.07),
-    0 0 0 1px rgba(10, 125, 67, 0.08),
-    inset 0 1px 0 rgba(255, 255, 255, 0.88);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--success);
+  box-shadow: none;
 }
 
 .comparison-slot.incomplete {
-  border-color: rgba(0, 0, 0, 0.06);
+  border-color: var(--border);
 }
 
 .slot-head {
@@ -1458,12 +1454,12 @@ details.explain pre {
   padding: 0.45rem 0.9rem;
   border-radius: 999px;
   background: var(--surface);
-  border: 1px solid rgba(0, 0, 0, 0.1);
+  border: 1px solid var(--border-strong);
   font-size: 0.875rem;
   font-weight: 500;
   cursor: pointer;
   color: var(--text);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  box-shadow: none;
   transition:
     background 0.15s ease,
     border-color 0.15s ease,
@@ -1478,9 +1474,7 @@ details.explain pre {
 .radio-pill:has(input:checked) {
   border-color: var(--accent);
   background: rgba(var(--accent-rgb), 0.1);
-  box-shadow:
-    0 1px 2px rgba(var(--accent-rgb), 0.12),
-    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  box-shadow: none;
 }
 
 .radio-pill:has(input:disabled) {
@@ -1623,21 +1617,22 @@ details.explain pre {
 }
 
 .results-panel {
-  margin-top: 1.5rem;
-  padding: 1rem;
-  border: 1px solid rgba(170, 178, 194, 0.2);
-  border-radius: 12px;
-  background: var(--surface);
-  box-shadow: 0 7px 18px rgba(16, 24, 40, 0.06);
+  margin-top: 1.75rem;
+  padding: 1.35rem 0 0;
+  border: none;
+  border-top: 1px solid var(--border-strong);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .results-narrative {
   margin-top: 1.25rem;
   max-width: 52rem;
-  padding: 0.9rem 1.05rem;
-  border-radius: 10px;
-  border: 1px solid var(--border-strong);
-  background: var(--surface-raised);
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius-panel);
+  border: 1px solid var(--border);
+  background: var(--surface);
 }
 
 .results-narrative h4 {
@@ -1674,9 +1669,9 @@ details.explain pre {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.8125rem;
-  background: #fff;
-  border: 1px solid rgba(124, 133, 149, 0.2);
-  border-radius: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel);
   overflow: hidden;
 }
 
@@ -1729,7 +1724,7 @@ details.explain pre {
   padding: 0.45rem 0.65rem;
   margin: 0;
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-panel);
   background: var(--surface-raised);
 }
 
@@ -1776,12 +1771,10 @@ details.explain pre {
   gap: 0.5rem 0.65rem;
   align-items: center;
   padding: 0.55rem 0.65rem;
-  background: linear-gradient(180deg, #ffffff 0%, #f9fbff 100%);
-  border: 1px solid rgba(124, 133, 149, 0.2);
-  border-radius: var(--radius-sm);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.88),
-    0 1px 4px rgba(16, 24, 40, 0.04);
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel);
+  box-shadow: none;
 }
 
 .filter-row > select.wb-input.tight {

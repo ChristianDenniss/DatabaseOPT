@@ -109,7 +109,7 @@ export const workbenchUi = {
     executeRunning: "Running...",
     resultsTitle: "Results",
     summaryNarrativeTitle: "Summary",
-    emptyCell: "n/a",
+    emptyCell: "N/A",
     bestSuffix: "best",
     valueModes: {
       literal: { label: "Value", placeholder: "Literal (comma-separated for IN)" },
