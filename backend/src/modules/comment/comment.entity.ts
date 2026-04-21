@@ -17,6 +17,10 @@ export class Comment {
   @Column({ type: "text" })
   body!: string;
 
+  /** Generated in DB for FTS benchmarks; not inserted/updated by the app. */
+  @Column({ name: "search_vector", type: "tsvector", insert: false, update: false })
+  searchVector?: string;
+
   @CreateDateColumn({ name: "created_at", type: "timestamp" })
   createdAt!: Date;
 }

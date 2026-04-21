@@ -23,6 +23,10 @@ export class User {
   @Column({ type: "text", nullable: true })
   bio!: string | null;
 
+  /** Generated in DB for FTS benchmarks; not inserted/updated by the app. */
+  @Column({ name: "search_vector", type: "tsvector", insert: false, update: false })
+  searchVector?: string;
+
   @Column({ name: "avatar_url", type: "varchar", length: 512, nullable: true })
   avatarUrl!: string | null;
 

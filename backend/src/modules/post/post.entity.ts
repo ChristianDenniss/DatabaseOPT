@@ -18,6 +18,10 @@ export class Post {
   @Column({ type: "text" })
   body!: string;
 
+  /** Generated in DB for FTS benchmarks; not inserted/updated by the app. */
+  @Column({ name: "search_vector", type: "tsvector", insert: false, update: false })
+  searchVector?: string;
+
   @Column({ name: "repost_of_post_id", type: "bigint", nullable: true })
   repostOfPostId!: string | null;
 

@@ -397,11 +397,27 @@ export function compileEntityQuery(
 
   const runRaw = async (qr: QueryRunner): Promise<unknown[]> => {
     const usePragma = shouldApplyFtsStoredScanPragma(entity, body.conditions, body.optimizationIds);
-    const sqlToRun = usePragma
-      ? `BEGIN;\nSET LOCAL enable_indexscan = off;\nSET LOCAL enable_bitmapscan = off;\n${sql};\nCOMMIT;`
-      : sql;
-    const rows = (await qr.query(sqlToRun, flatParams)) as Record<string, unknown>[];
-    return rows.map((r) => mapRow(entity, r, selectIds));
+    if (!usePragma) {
+      const rows = (await qr.query(sql, flatParams)) as Record<string, unknown>[];
+      return rows.map((r) => mapRow(entity, r, selectIds));
+    }
+    // SET LOCAL must run inside a transaction; use separate statements so the driver does not
+    // send BEGIN/SET/SELECT/COMMIT as one prepared multi-command string (node-pg rejects that).
+    await qr.startTransaction();
+    try {
+      await qr.query(`SET LOCAL enable_indexscan = off`);
+      await qr.query(`SET LOCAL enable_bitmapscan = off`);
+      const rows = (await qr.query(sql, flatParams)) as Record<string, unknown>[];
+      await qr.commitTransaction();
+      return rows.map((r) => mapRow(entity, r, selectIds));
+    } catch (e) {
+      try {
+        await qr.rollbackTransaction();
+      } catch {
+        /* ignore rollback errors */
+      }
+      throw e;
+    }
   };
 
   const runTypeorm = async (qr: QueryRunner): Promise<unknown[]> => {
